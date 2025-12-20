@@ -212,18 +212,18 @@ def sort_by_reading_order(regions: List[TextRegion]) -> List[TextRegion]:
             )
         ]
     
-    # 各領域の中心座標と高さを計算
+    # 各領域の右上座標（右端x、上端y）と高さを計算
     region_data = []
     for region in regions:
         x1, y1, x2, y2 = region.bbox
-        center_x = (x1 + x2) / 2
-        center_y = (y1 + y2) / 2
+        right_x = x2  # 右端x座標
+        top_y = y1    # 上端y座標（右上のy座標）
         height = y2 - y1
-        region_data.append((region, center_x, center_y, height))
+        region_data.append((region, right_x, top_y, height))
     
-    # 画像の高さを取得（段の閾値計算用）
-    max_y = max(cy for _, _, cy, _ in region_data)
-    min_y = min(cy for _, _, cy, _ in region_data)
+    # 画像の高さを取得（段の閾値計算用、右上のy座標を使用）
+    max_y = max(ty for _, _, ty, _ in region_data)
+    min_y = min(ty for _, _, ty, _ in region_data)
     image_height = max_y - min_y
     
     # 平均的な領域の高さを計算
@@ -237,32 +237,33 @@ def sort_by_reading_order(regions: List[TextRegion]) -> List[TextRegion]:
     rows: List[List[Tuple[TextRegion, float, float]]] = []
     used = set()
     
-    # y座標でソートして、上から順に処理
-    for region, cx, cy, _ in sorted(region_data, key=lambda x: x[2]):  # y座標でソート
+    # 右上のy座標（上端）でソートして、上から順に処理
+    for region, rx, ty, _ in sorted(region_data, key=lambda x: x[2]):  # 上端y座標でソート
         if id(region) in used:
             continue
         
-        # 同じ段（y座標が近い）の領域を探す
-        row = [(region, cx, cy)]
+        # 同じ段（右上のy座標が近い）の領域を探す
+        row = [(region, rx, ty)]
         used.add(id(region))
         
-        for other_region, other_cx, other_cy, _ in region_data:
+        for other_region, other_rx, other_ty, _ in region_data:
             if id(other_region) in used:
                 continue
             
-            # y座標の差が閾値以内なら同じ段
-            if abs(cy - other_cy) <= row_threshold:
-                row.append((other_region, other_cx, other_cy))
+            # 右上のy座標（上端）の差が閾値以内なら同じ段
+            if abs(ty - other_ty) <= row_threshold:
+                row.append((other_region, other_rx, other_ty))
                 used.add(id(other_region))
         
-        # 段内でソート: まずx座標（右から左）、同じならy座標（上から下）
+        # 段内でソート: まず右端x座標（右から左）、同じなら上端y座標（上から下）
         # これにより、右上が最優先になる
-        row.sort(key=lambda x: (-x[1], x[2]))  # -x座標（右優先）、次にy座標（上優先）
+        # 中心座標ではなく、右上座標（右端x、上端y）で評価
+        row.sort(key=lambda x: (-x[0].bbox[2], x[0].bbox[1]))  # 右端x座標の降順、次に上端y座標の昇順
         rows.append(row)
     
-    # 段を上から下にソート（各段の最小y座標でソート）
-    # 最小y座標を使うことで、段の上端で比較できる
-    rows.sort(key=lambda row: min(cy for _, _, cy in row))
+    # 段を上から下にソート（各段の最小y座標=右上のy座標でソート）
+    # 最小y座標（上端）を使うことで、段の上端で比較できる
+    rows.sort(key=lambda row: min(ty for _, _, ty in row))
     
     # フラット化して読み順を設定
     result = []

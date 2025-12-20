@@ -163,19 +163,29 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
     row_threshold = max(20, min(avg_panel_height * 0.6, image_height * 0.08))
     
     # 段（行）ごとにグループ化
+    # まず、すべてのコマをy座標でソートしてから、段ごとにグループ化
     rows: List[List[Panel]] = []
     used_panels = set()
     
     # 右上のy座標（上端）でソート
-    for panel, rx, ty in sorted(panel_top_right, key=lambda x: x[2]):  # 上端y座標でソート
+    sorted_panels = sorted(panel_top_right, key=lambda x: x[2])  # 上端y座標でソート
+    
+    # 段ごとにグループ化（より確実な方法）
+    while sorted_panels:
+        # 最初のコマを取得
+        panel, rx, ty = sorted_panels[0]
         if id(panel) in used_panels:
+            sorted_panels.pop(0)
             continue
         
         # 同じ段（右上のy座標が近い）のコマを探す
         row = [panel]
         used_panels.add(id(panel))
+        sorted_panels.pop(0)
         
-        for other_panel, other_rx, other_ty in panel_top_right:
+        # 残りのコマから同じ段のコマを探す
+        remaining_panels = []
+        for other_panel, other_rx, other_ty in sorted_panels:
             if id(other_panel) in used_panels:
                 continue
             
@@ -183,6 +193,10 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
             if abs(ty - other_ty) <= row_threshold:
                 row.append(other_panel)
                 used_panels.add(id(other_panel))
+            else:
+                remaining_panels.append((other_panel, other_rx, other_ty))
+        
+        sorted_panels = remaining_panels
         
         # デバッグログ: ソート前の順序
         if len(row) > 1:
