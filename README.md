@@ -2,39 +2,56 @@
 
 Zipファイルで圧縮された漫画画像を一括で読み込み、OCRを実行してテキストデータを出力するPython CLIツール。
 
-Apple Silicon (M4) のMPS (Metal Performance Shaders) を活用し、ローカル環境で高速に推論を行います。
+Apple Silicon (M1/M2/M3/M4) のMPS (Metal Performance Shaders) を活用し、ローカル環境で高速に推論を行います。
 
 ## 機能
 
-- Zipファイルから漫画画像を一括処理
-- テキスト領域（吹き出し）の自動検出
-- 漫画の読み順に基づいたテキスト抽出
-- JSON形式とテキスト形式での出力
-- Apple Silicon (MPS) による高速処理
+- ✅ Zipファイルから漫画画像を一括処理
+- ✅ テキスト領域（吹き出し）の自動検出
+- ✅ 漫画の読み順に基づいたテキスト抽出
+- ✅ JSON形式とテキスト形式での出力
+- ✅ Apple Silicon (MPS) による高速OCR処理
 
 ## 要件
 
 - Python 3.10+
-- Apple Silicon Mac (MPS対応)
+- Apple Silicon Mac (M1/M2/M3/M4) - MPS対応
 - PyTorch (MPS対応版)
 
 ## インストール
 
+### 1. リポジトリのクローン
+
 ```bash
-# リポジトリをクローン
 git clone <repository-url>
 cd manga-ocr
+```
 
+### 2. 仮想環境の作成と依存関係のインストール
+
+```bash
 # 仮想環境を作成（推奨）
 python3 -m venv venv
 source venv/bin/activate
 
 # 依存関係をインストール
 pip install -r requirements.txt
-
-# 開発モードでインストール
-pip install -e .
 ```
+
+### 3. モデルファイルの配置
+
+`comic-text-detector` を使用するには、事前にトレーニングされたモデルファイルが必要です。
+
+1. 以下のリンクからモデルファイルをダウンロードしてください：
+   - [manga-image-translator リリースページ](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.2.1)
+   - [Google Drive](https://drive.google.com/drive/folders/1cTsXP5NYTCjhPVxwScdhxqJleHuIOyXG?usp=sharing)
+
+2. ダウンロードしたモデルファイル（`comictextdetector.pt` または `comictextdetector.pt.onnx`）を以下の場所に配置してください：
+   ```
+   vendor/comic-text-detector/data/comictextdetector.pt
+   ```
+
+**注意**: モデルファイルは約100MB以上のサイズがあります。モデルファイルが配置されていない場合、テキスト検出機能は使用できません（フォールバックとして画像全体を1つの領域として扱います）。
 
 ## 使用方法
 
@@ -79,37 +96,23 @@ python3 -m src.cli '漫画タイトル.zip' --verbose
 #   - 漫画タイトル_output.txt
 ```
 
-## 開発状況
-
-**Phase 1-6 完了！** MVP機能の実装が完了しました。
-
-- [x] Phase 1: プロジェクト基盤構築
-- [x] Phase 2: 入力処理の実装（Zip展開、画像フィルタリング）
-- [x] Phase 3: テキスト検出の実装（comic-text-detector統合）
-- [x] Phase 4: OCR処理の実装（manga-ocr統合）
-- [x] Phase 5: 出力生成の実装（JSON/TXT形式）
-- [x] Phase 6: CLI統合と完成
-
-詳細は `docs/20_PLAN/roadmap.md` を参照してください。
 
 ## 注意事項
 
-- **モデルファイル**: `comic-text-detector` のモデルファイル（`comictextdetector.pt`）が必要です。
-  詳細は `INSTALL.md` を参照してください。
+- **モデルファイル**: `comic-text-detector` のモデルファイル（`comictextdetector.pt`）が必要です。上記のインストール手順を参照してください。
 - **初回実行**: 初回実行時、`manga-ocr` がモデルをダウンロードするため時間がかかります。
 - **処理時間**: 画像数やサイズによって処理時間が異なります。大量の画像がある場合は時間がかかります。
-- **MPSサポート**: `comic-text-detector` はMPSを直接サポートしていないため、テキスト検出はCPUで実行されます。OCR処理はMPSを使用します。
+- **MPSサポート**: OCR処理はMPSを使用して高速に実行されます。テキスト検出はCPUで実行されます（詳細は `docs/PERFORMANCE.md` を参照）。
 
 ## トラブルシューティング
 
 問題が発生した場合は、`docs/TROUBLESHOOTING.md` を参照してください。
 
-## テスト
+## ドキュメント
 
-```bash
-# テストを実行
-python3 -m pytest tests/ -v
-```
+- **トラブルシューティング**: `docs/TROUBLESHOOTING.md` - よくある問題と解決方法
+- **パフォーマンス**: `docs/PERFORMANCE.md` - デバイス使用、MPS、パフォーマンスについて
+- **開発計画**: `docs/20_PLAN/roadmap.md` - 開発状況と実装計画
 
 ## ライセンス
 
