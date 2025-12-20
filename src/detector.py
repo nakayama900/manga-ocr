@@ -84,7 +84,15 @@ def detect_text_regions(
                 device_str = "cpu"
         elif device == "mps":
             # MPSはcomic-text-detectorでは直接サポートされていないため、CPUにフォールバック
-            logger.warning("MPSはcomic-text-detectorでサポートされていません。CPUを使用します。")
+            # 注意: これは正常な動作です。comic-text-detectorはPyTorchのMPSを直接使用できません
+            # テキスト検出はCPUで実行されますが、OCR処理（manga-ocr）はMPSを使用します
+            if not hasattr(sort_by_reading_order, '_mps_warning_logged'):
+                logger.info(
+                    "comic-text-detectorはMPSを直接サポートしていないため、"
+                    "テキスト検出はCPUで実行されます。"
+                    "OCR処理（manga-ocr）はMPSを使用します。"
+                )
+                sort_by_reading_order._mps_warning_logged = True
             device_str = "cpu"
         else:
             device_str = device
@@ -179,6 +187,11 @@ def sort_by_reading_order(regions: List[TextRegion]) -> List[TextRegion]:
     - 右上から左下へ
     - 段組みを考慮（上段→下段、各段内で右→左）
     
+    アルゴリズム:
+    1. 領域をy座標でグループ化（閾値内のy座標差を同じ段とみなす）
+    2. 各段内でx座標でソート（右から左、つまり-x座標でソート）
+    3. 段をy座標でソート（上から下）
+    
     Args:
         regions: テキスト領域のリスト
     
@@ -188,34 +201,74 @@ def sort_by_reading_order(regions: List[TextRegion]) -> List[TextRegion]:
     if not regions:
         return []
     
-    def get_reading_order_key(region: TextRegion) -> Tuple[float, float]:
-        """
-        読み順のキーを計算
-        
-        Returns:
-            (y座標の重み付き平均, -x座標) のタプル
-            上段ほど、右側ほど優先される
-        """
+    if len(regions) == 1:
+        return [
+            TextRegion(
+                bbox=regions[0].bbox,
+                image=regions[0].image,
+                reading_order=0
+            )
+        ]
+    
+    # 各領域の中心座標を計算
+    region_centers = []
+    for region in regions:
         x1, y1, x2, y2 = region.bbox
         center_x = (x1 + x2) / 2
         center_y = (y1 + y2) / 2
+        region_centers.append((region, center_x, center_y))
+    
+    # 画像の高さを取得（段の閾値計算用）
+    # 最初の領域から画像サイズを推定（bboxから）
+    max_y = max(cy for _, _, cy in region_centers)
+    min_y = min(cy for _, _, cy in region_centers)
+    image_height = max_y - min_y
+    
+    # 段の閾値: 画像高さの5%以内のy座標差を同じ段とみなす
+    # 最小値として20ピクセルを保証
+    row_threshold = max(20, image_height * 0.05)
+    
+    # 段（行）ごとにグループ化
+    rows: List[List[Tuple[TextRegion, float, float]]] = []
+    used = set()
+    
+    for region, cx, cy in sorted(region_centers, key=lambda x: x[2]):  # y座標でソート
+        if id(region) in used:
+            continue
         
-        # 段組みを考慮: y座標を優先し、同じ高さならx座標で比較
-        # 簡易実装: y座標でソート、同じならx座標（右側優先）
-        # より正確な実装には、段の検出が必要（y座標の近い領域を同じ段とみなす）
-        return (center_y, -center_x)  # y座標でソート、同じならx座標（右側優先）
+        # 同じ段（y座標が近い）の領域を探す
+        row = [(region, cx, cy)]
+        used.add(id(region))
+        
+        for other_region, other_cx, other_cy in region_centers:
+            if id(other_region) in used:
+                continue
+            
+            # y座標の差が閾値以内なら同じ段
+            if abs(cy - other_cy) <= row_threshold:
+                row.append((other_region, other_cx, other_cy))
+                used.add(id(other_region))
+        
+        # 段内で右から左にソート（x座標の降順）
+        row.sort(key=lambda x: -x[1])  # -x座標でソート（右側優先）
+        rows.append(row)
     
-    sorted_regions = sorted(regions, key=get_reading_order_key)
+    # 段を上から下にソート（各段の平均y座標でソート）
+    rows.sort(key=lambda row: sum(cy for _, _, cy in row) / len(row))
     
-    # 読み順を再設定
-    result = [
-        TextRegion(
-            bbox=region.bbox,
-            image=region.image,
-            reading_order=i
-        )
-        for i, region in enumerate(sorted_regions)
-    ]
+    # フラット化して読み順を設定
+    result = []
+    reading_order = 0
+    for row in rows:
+        for region, _, _ in row:
+            result.append(
+                TextRegion(
+                    bbox=region.bbox,
+                    image=region.image,
+                    reading_order=reading_order
+                )
+            )
+            reading_order += 1
     
     return result
 

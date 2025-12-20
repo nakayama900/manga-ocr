@@ -12,21 +12,33 @@ from src.detector import (
 
 
 def test_sort_by_reading_order():
-    """読み順ソートのテスト"""
+    """読み順ソートのテスト（段組みを考慮）"""
     # テスト用の領域を作成（右上から左下へ）
+    # 上段: 右(200,50) -> 左(50,50)
+    # 下段: 右(200,200) -> 左(50,200)
     regions = [
-        TextRegion(bbox=(200, 50, 300, 100), image=None, reading_order=0),
-        TextRegion(bbox=(50, 50, 150, 100), image=None, reading_order=0),
-        TextRegion(bbox=(200, 200, 300, 250), image=None, reading_order=0),
-        TextRegion(bbox=(50, 200, 150, 250), image=None, reading_order=0),
+        TextRegion(bbox=(50, 50, 150, 100), image=None, reading_order=0),   # 上段左
+        TextRegion(bbox=(200, 200, 300, 250), image=None, reading_order=0),  # 下段右
+        TextRegion(bbox=(200, 50, 300, 100), image=None, reading_order=0),  # 上段右
+        TextRegion(bbox=(50, 200, 150, 250), image=None, reading_order=0),   # 下段左
     ]
     
     sorted_regions = sort_by_reading_order(regions)
     
     # 読み順が設定されていることを確認
     assert all(r.reading_order >= 0 for r in sorted_regions)
-    # ソートされていることを確認（簡易チェック）
     assert len(sorted_regions) == len(regions)
+    
+    # 正しい読み順を確認
+    # 期待される順序: 上段右(0) -> 上段左(1) -> 下段右(2) -> 下段左(3)
+    assert sorted_regions[0].bbox[0] == 200  # 上段右
+    assert sorted_regions[0].bbox[1] == 50
+    assert sorted_regions[1].bbox[0] == 50   # 上段左
+    assert sorted_regions[1].bbox[1] == 50
+    assert sorted_regions[2].bbox[0] == 200  # 下段右
+    assert sorted_regions[2].bbox[1] == 200
+    assert sorted_regions[3].bbox[0] == 50   # 下段左
+    assert sorted_regions[3].bbox[1] == 200
 
 
 def test_crop_text_regions():
