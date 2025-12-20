@@ -64,7 +64,8 @@ git submodule update --init --recursive
 git submodule update --init --recursive
 ```
 
-**既存のvendor/comic-text-detectorがある場合**（手動でクローンした場合）:
+<details>
+<summary>既存のvendor/comic-text-detectorがある場合（v0.1以前からアップデートする場合）</summary>
 
 既に手動で`vendor/comic-text-detector`をクローンしている場合は、以下の手順でsubmoduleに変換できます：
 
@@ -78,6 +79,8 @@ git submodule add https://github.com/dmMaze/comic-text-detector.git vendor/comic
 # submoduleを初期化
 git submodule update --init --recursive
 ```
+
+</details>
 
 **重要**: `comic-text-detector`は必須です。セットアップしないとテキスト検出機能が動作しません。
 
@@ -99,54 +102,19 @@ pip install -e .
 
 `comic-text-detector` を使用するには、事前にトレーニングされたモデルファイルが必要です。
 
-#### 方法1: 自動ダウンロード（推奨）
+**setup.shが利用できない場合**（Windowsなど）は、以下のリンクからモデルファイルをダウンロードし、`vendor/comic-text-detector/data/comictextdetector.pt` に配置してください：
 
-以下のコマンドで自動的にダウンロードして配置します：
+- [manga-image-translator 最新リリースページ](https://github.com/zyddnys/manga-image-translator/releases/latest)
+- [manga-image-translator beta-0.3 リリースページ](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
+- [Google Drive](https://drive.google.com/drive/folders/1cTsXP5NYTCjhPVxwScdhxqJleHuIOyXG?usp=sharing)
 
 ```bash
 # dataディレクトリが存在しない場合は作成
 mkdir -p vendor/comic-text-detector/data
 
-# モデルファイルをダウンロード（約76MB）
-curl -L -o vendor/comic-text-detector/data/comictextdetector.pt \
-  "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt"
-
-# ダウンロードが成功したことを確認
-if [ -f "vendor/comic-text-detector/data/comictextdetector.pt" ]; then
-    file_size=$(ls -lh vendor/comic-text-detector/data/comictextdetector.pt | awk '{print $5}')
-    echo "✓ モデルファイルのダウンロードが完了しました（サイズ: $file_size）"
-else
-    echo "✗ モデルファイルのダウンロードに失敗しました"
-    echo "方法2の手動ダウンロードを試してください"
-    exit 1
-fi
+# ダウンロードしたファイルを配置（パスを適宜変更してください）
+mv ~/Downloads/comictextdetector.pt vendor/comic-text-detector/data/
 ```
-
-#### 方法2: 手動ダウンロード
-
-自動ダウンロードが失敗した場合、以下の手順で手動でダウンロードしてください：
-
-1. 以下のリンクからモデルファイルをダウンロードしてください：
-   - [manga-image-translator 最新リリースページ](https://github.com/zyddnys/manga-image-translator/releases/latest)
-   - [manga-image-translator beta-0.3 リリースページ](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
-   - [Google Drive](https://drive.google.com/drive/folders/1cTsXP5NYTCjhPVxwScdhxqJleHuIOyXG?usp=sharing)
-
-2. ダウンロードしたモデルファイル（`comictextdetector.pt`）を以下の場所に配置してください：
-   ```bash
-   # dataディレクトリが存在しない場合は作成
-   mkdir -p vendor/comic-text-detector/data
-   
-   # ダウンロードしたファイルを配置（パスを適宜変更してください）
-   mv ~/Downloads/comictextdetector.pt vendor/comic-text-detector/data/
-   
-   # 配置が成功したことを確認
-   if [ -f "vendor/comic-text-detector/data/comictextdetector.pt" ]; then
-       echo "✓ モデルファイルの配置が完了しました"
-   else
-       echo "✗ モデルファイルが見つかりません"
-       exit 1
-   fi
-   ```
 
 **重要**: モデルファイル（約76MB）は必須です。配置されていない場合、テキスト検出機能は動作しません。
 
