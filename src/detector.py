@@ -32,6 +32,11 @@ logger = logging.getLogger(__name__)
 # グローバルなTextDetectorインスタンスのキャッシュ
 _detector_cache: dict[str, TextDetector] = {}
 
+# 警告ログの重複を防ぐためのフラグ
+_comic_detector_warning_logged = False
+_model_file_warning_logged = False
+_model_file_warning_logged = False
+
 
 class TextRegion(NamedTuple):
     """テキスト領域情報"""
@@ -61,19 +66,17 @@ def detect_text_regions(
         ImageProcessingError: 画像処理エラー
     """
     if not HAS_COMIC_DETECTOR:
-        # フォールバック: 画像全体を1つの領域として扱う
-        logger.warning(
-            "comic-text-detector が利用できません。"
-            "画像全体をテキスト領域として扱います。"
-        )
-        width, height = image.size
-        return [
-            TextRegion(
-                bbox=(0, 0, width, height),
-                image=image.copy(),
-                reading_order=0
+        # comic-text-detectorが利用できない場合は、テキスト検出をスキップ
+        global _comic_detector_warning_logged
+        if not _comic_detector_warning_logged:
+            logger.warning(
+                "comic-text-detector が利用できません。"
+                "テキスト検出をスキップします。"
+                "テキスト検出の精度を上げるには、README.mdの手順に従って comic-text-detector をセットアップしてください。"
             )
-        ]
+            _comic_detector_warning_logged = True
+        # 空のリストを返す（テキスト検出なし）
+        return []
     
     try:
         # デバイスの決定
@@ -113,11 +116,17 @@ def detect_text_regions(
                     break
             
             if model_path is None:
-                raise ImageProcessingError(
-                    "comic-text-detector のモデルファイルが見つかりません。"
-                    "モデルファイルをダウンロードして配置してください。"
-                    "詳細は INSTALL.md を参照してください。"
-                )
+                global _model_file_warning_logged
+                if not _model_file_warning_logged:
+                    logger.warning(
+                        "comic-text-detector のモデルファイルが見つかりません。"
+                        "モデルファイルをダウンロードして配置してください。"
+                        "詳細は README.md を参照してください。"
+                        "テキスト検出をスキップします。"
+                    )
+                    _model_file_warning_logged = True
+                # モデルファイルがない場合は、テキスト検出をスキップ
+                return []
         
         # PIL Image を OpenCV 形式に変換
         img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -155,16 +164,9 @@ def detect_text_regions(
                 )
         
         if not regions:
-            # フォールバック: 画像全体を1つの領域として扱う
+            # テキスト領域が検出されなかった場合は、空のリストを返す
             # ログは出力しない（大量の画像を処理する場合、ログが多すぎる）
-            width, height = image.size
-            return [
-                TextRegion(
-                    bbox=(0, 0, width, height),
-                    image=image.copy(),
-                    reading_order=0
-                )
-            ]
+            return []
         
         # 読み順でソート
         regions = sort_by_reading_order(regions)
