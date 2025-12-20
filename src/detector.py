@@ -1,0 +1,265 @@
+"""テキスト検出モジュール: comic-text-detector のラッパー"""
+
+import sys
+from pathlib import Path
+from typing import List, NamedTuple, Tuple, Optional
+import logging
+
+# comic-text-detector のパスを追加
+COMIC_DETECTOR_PATH = Path(__file__).parent.parent / "vendor" / "comic-text-detector"
+if COMIC_DETECTOR_PATH.exists():
+    sys.path.insert(0, str(COMIC_DETECTOR_PATH))
+
+try:
+    from inference import TextDetector
+    from utils.textmask import REFINEMASK_INPAINT
+    import cv2
+    import numpy as np
+    HAS_COMIC_DETECTOR = True
+except ImportError as e:
+    HAS_COMIC_DETECTOR = False
+    TextDetector = None
+    REFINEMASK_INPAINT = None
+    cv2 = None
+    np = None
+
+from PIL import Image
+
+from .exceptions import ImageProcessingError
+
+logger = logging.getLogger(__name__)
+
+# グローバルなTextDetectorインスタンスのキャッシュ
+_detector_cache: dict[str, TextDetector] = {}
+
+
+class TextRegion(NamedTuple):
+    """テキスト領域情報"""
+    bbox: Tuple[int, int, int, int]  # (x1, y1, x2, y2)
+    image: Image.Image  # クロップされた画像
+    reading_order: int  # 読み順（0始まり）
+
+
+def detect_text_regions(
+    image: Image.Image,
+    model_path: Optional[str] = None,
+    device: str = "auto"
+) -> List[TextRegion]:
+    """
+    画像からテキスト領域を検出
+    
+    Args:
+        image: PIL Imageオブジェクト
+        model_path: comic-text-detector のモデルファイルパス
+                    Noneの場合はデフォルトパスを試行
+        device: 使用デバイス ("auto" | "mps" | "cpu" | "cuda")
+    
+    Returns:
+        読み順でソートされたテキスト領域のリスト
+    
+    Raises:
+        ImageProcessingError: 画像処理エラー
+    """
+    if not HAS_COMIC_DETECTOR:
+        # フォールバック: 画像全体を1つの領域として扱う
+        logger.warning(
+            "comic-text-detector が利用できません。"
+            "画像全体をテキスト領域として扱います。"
+        )
+        width, height = image.size
+        return [
+            TextRegion(
+                bbox=(0, 0, width, height),
+                image=image.copy(),
+                reading_order=0
+            )
+        ]
+    
+    try:
+        # デバイスの決定
+        if device == "auto":
+            if hasattr(cv2, "cuda") and cv2.cuda.getCudaEnabledDeviceCount() > 0:
+                device_str = "cuda"
+            else:
+                device_str = "cpu"
+        elif device == "mps":
+            # MPSはcomic-text-detectorでは直接サポートされていないため、CPUにフォールバック
+            logger.warning("MPSはcomic-text-detectorでサポートされていません。CPUを使用します。")
+            device_str = "cpu"
+        else:
+            device_str = device
+        
+        # モデルパスの決定
+        if model_path is None:
+            # デフォルトのモデルパスを試行
+            default_paths = [
+                COMIC_DETECTOR_PATH / "data" / "comictextdetector.pt",
+                COMIC_DETECTOR_PATH / "data" / "comictextdetector.pt.onnx",
+                Path("vendor/comic-text-detector/data/comictextdetector.pt"),
+                Path("vendor/comic-text-detector/data/comictextdetector.pt.onnx"),
+            ]
+            model_path = None
+            for path in default_paths:
+                if path.exists():
+                    model_path = str(path)
+                    break
+            
+            if model_path is None:
+                raise ImageProcessingError(
+                    "comic-text-detector のモデルファイルが見つかりません。"
+                    "モデルファイルをダウンロードして配置してください。"
+                    "詳細は INSTALL.md を参照してください。"
+                )
+        
+        # PIL Image を OpenCV 形式に変換
+        img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        
+        # TextDetector の初期化（初回のみ、キャッシュを使用）
+        cache_key = f"{model_path}:{device_str}"
+        if cache_key not in _detector_cache:
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(f"TextDetector を初期化中: {model_path} (device: {device_str})")
+            _detector_cache[cache_key] = TextDetector(
+                model_path=model_path,
+                input_size=1024,
+                device=device_str,
+                act='leaky'
+            )
+        
+        detector = _detector_cache[cache_key]
+        
+        # テキスト検出を実行
+        mask, mask_refined, blk_list = detector(img_cv, refine_mode=REFINEMASK_INPAINT, keep_undetected_mask=False)
+        
+        # TextBlock から TextRegion に変換
+        regions: List[TextRegion] = []
+        for blk in blk_list:
+            x1, y1, x2, y2 = blk.xyxy
+            # バウンディングボックスが有効か確認
+            if x2 > x1 and y2 > y1:
+                # 領域をクロップ（後でcrop_text_regionsで処理）
+                regions.append(
+                    TextRegion(
+                        bbox=(int(x1), int(y1), int(x2), int(y2)),
+                        image=None,  # 後でクロップ
+                        reading_order=0  # 後でソート
+                    )
+                )
+        
+        if not regions:
+            # フォールバック: 画像全体を1つの領域として扱う
+            # ログは出力しない（大量の画像を処理する場合、ログが多すぎる）
+            width, height = image.size
+            return [
+                TextRegion(
+                    bbox=(0, 0, width, height),
+                    image=image.copy(),
+                    reading_order=0
+                )
+            ]
+        
+        # 読み順でソート
+        regions = sort_by_reading_order(regions)
+        
+        # 領域をクロップ
+        regions = crop_text_regions(image, regions)
+        
+        return regions
+        
+    except Exception as e:
+        logger.error(f"テキスト領域の検出に失敗しました: {e}", exc_info=True)
+        raise ImageProcessingError(f"テキスト領域の検出に失敗しました: {e}")
+
+
+def sort_by_reading_order(regions: List[TextRegion]) -> List[TextRegion]:
+    """
+    テキスト領域を漫画の読み順でソート
+    
+    漫画の一般的な読み順:
+    - 右上から左下へ
+    - 段組みを考慮（上段→下段、各段内で右→左）
+    
+    Args:
+        regions: テキスト領域のリスト
+    
+    Returns:
+        ソートされたテキスト領域のリスト
+    """
+    if not regions:
+        return []
+    
+    def get_reading_order_key(region: TextRegion) -> Tuple[float, float]:
+        """
+        読み順のキーを計算
+        
+        Returns:
+            (y座標の重み付き平均, -x座標) のタプル
+            上段ほど、右側ほど優先される
+        """
+        x1, y1, x2, y2 = region.bbox
+        center_x = (x1 + x2) / 2
+        center_y = (y1 + y2) / 2
+        
+        # 段組みを考慮: y座標を優先し、同じ高さならx座標で比較
+        # 簡易実装: y座標でソート、同じならx座標（右側優先）
+        # より正確な実装には、段の検出が必要（y座標の近い領域を同じ段とみなす）
+        return (center_y, -center_x)  # y座標でソート、同じならx座標（右側優先）
+    
+    sorted_regions = sorted(regions, key=get_reading_order_key)
+    
+    # 読み順を再設定
+    result = [
+        TextRegion(
+            bbox=region.bbox,
+            image=region.image,
+            reading_order=i
+        )
+        for i, region in enumerate(sorted_regions)
+    ]
+    
+    return result
+
+
+def crop_text_regions(image: Image.Image, regions: List[TextRegion]) -> List[TextRegion]:
+    """
+    テキスト領域を画像からクロップ
+    
+    Args:
+        image: 元の画像
+        regions: テキスト領域のリスト（bbox情報のみ）
+    
+    Returns:
+        クロップされた画像を含むテキスト領域のリスト
+    """
+    cropped_regions: List[TextRegion] = []
+    
+    for region in regions:
+        x1, y1, x2, y2 = region.bbox
+        
+        # バウンディングボックスが画像範囲内か確認
+        width, height = image.size
+        x1 = max(0, min(x1, width))
+        y1 = max(0, min(y1, height))
+        x2 = max(0, min(x2, width))
+        y2 = max(0, min(y2, height))
+        
+        if x2 <= x1 or y2 <= y1:
+            logger.warning(f"無効なバウンディングボックスをスキップ: {region.bbox}")
+            continue
+        
+        # 領域をクロップ
+        try:
+            cropped_image = image.crop((x1, y1, x2, y2))
+            cropped_regions.append(
+                TextRegion(
+                    bbox=(x1, y1, x2, y2),
+                    image=cropped_image,
+                    reading_order=region.reading_order
+                )
+            )
+        except Exception as e:
+            logger.warning(f"領域のクロップに失敗: {region.bbox}, エラー: {e}")
+            continue
+    
+    return cropped_regions
+
