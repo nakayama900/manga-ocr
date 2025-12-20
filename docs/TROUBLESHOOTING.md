@@ -11,7 +11,8 @@ comic-text-detector のモデルファイルが見つかりません。
 
 **解決方法:**
 1. モデルファイルをダウンロード:
-   - [manga-image-translator リリースページ](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.2.1)
+   - [manga-image-translator 最新リリースページ](https://github.com/zyddnys/manga-image-translator/releases/latest)
+   - [manga-image-translator beta-0.3 リリースページ](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
    - または [Google Drive](https://drive.google.com/drive/folders/1cTsXP5NYTCjhPVxwScdhxqJleHuIOyXG?usp=sharing)
 
 2. モデルファイルを配置:
@@ -19,7 +20,7 @@ comic-text-detector のモデルファイルが見つかりません。
    vendor/comic-text-detector/data/comictextdetector.pt
    ```
 
-詳細は `INSTALL.md` を参照してください。
+詳細は `README.md` を参照してください。
 
 ### 2. MPSが利用できない
 

@@ -23,36 +23,65 @@ Apple Silicon (M1/M2/M3/M4) のMPS (Metal Performance Shaders) を活用し、�
 
 ## インストール
 
-### 1. リポジトリのクローン
+### 方法1: 自動セットアップスクリプト（推奨）
+
+最も簡単な方法です。以下のコマンドで全てのセットアップが完了します：
 
 ```bash
-git clone https://github.com/kazuki-ookura/manga-ocr.git
+# リポジトリのクローン（submoduleも含む）
+git clone --recursive https://github.com/kazuki-ookura/manga-ocr.git
 cd manga-ocr
+
+# セットアップスクリプトを実行
+./setup.sh
 ```
 
-### 2. comic-text-detectorのセットアップ
+セットアップスクリプトは以下を自動で実行します：
+- `comic-text-detector`のセットアップ（git submodule）
+- モデルファイルのダウンロード
+- 仮想環境の作成（オプション）
+- 依存関係のインストール
 
-テキスト検出機能を使用するために、`comic-text-detector`をセットアップします：
+### 方法2: 手動セットアップ
+
+#### 1. リポジトリのクローン
 
 ```bash
-# vendorディレクトリが存在しない場合は作成
-mkdir -p vendor
+# submoduleも含めてクローン（推奨）
+git clone --recursive https://github.com/kazuki-ookura/manga-ocr.git
+cd manga-ocr
 
-# comic-text-detectorをクローン
-git clone https://github.com/dmMaze/comic-text-detector.git vendor/comic-text-detector
+# または、既にクローン済みの場合
+git submodule update --init --recursive
+```
 
-# クローンが成功したことを確認
-if [ -d "vendor/comic-text-detector" ]; then
-    echo "✓ comic-text-detector のセットアップが完了しました"
-else
-    echo "✗ comic-text-detector のセットアップに失敗しました"
-    exit 1
-fi
+#### 2. comic-text-detectorのセットアップ
+
+`comic-text-detector`はgit submoduleとして管理されています：
+
+```bash
+# submoduleを初期化（既に--recursiveでクローンした場合は不要）
+git submodule update --init --recursive
+```
+
+**既存のvendor/comic-text-detectorがある場合**（手動でクローンした場合）:
+
+既に手動で`vendor/comic-text-detector`をクローンしている場合は、以下の手順でsubmoduleに変換できます：
+
+```bash
+# 既存のvendor/comic-text-detectorを削除（バックアップ推奨）
+rm -rf vendor/comic-text-detector
+
+# git submoduleとして追加
+git submodule add https://github.com/dmMaze/comic-text-detector.git vendor/comic-text-detector
+
+# submoduleを初期化
+git submodule update --init --recursive
 ```
 
 **重要**: `comic-text-detector`は必須です。セットアップしないとテキスト検出機能が動作しません。
 
-### 3. 仮想環境の作成と依存関係のインストール
+#### 3. 仮想環境の作成と依存関係のインストール
 
 ```bash
 # 仮想環境を作成（推奨）
@@ -61,9 +90,12 @@ source venv/bin/activate
 
 # 依存関係をインストール
 pip install -r requirements.txt
+
+# プロジェクトをインストール（エントリーポイントを有効化）
+pip install -e .
 ```
 
-### 4. モデルファイルの配置
+#### 4. モデルファイルの配置
 
 `comic-text-detector` を使用するには、事前にトレーニングされたモデルファイルが必要です。
 
@@ -120,24 +152,38 @@ fi
 
 ## 使用方法
 
+### エントリーポイントを使用（推奨）
+
+`pip install -e .`でインストールした場合、以下のコマンドで実行できます：
+
+```bash
+# 基本的な使用
+manga-ocr comic.zip
+```
+
+### モジュールとして実行
+
+エントリーポイントが設定されていない場合：
+
 ```bash
 # 基本的な使用
 python3 -m src.cli comic.zip
+```
 
 # JSON形式のみ出力
-python3 -m src.cli comic.zip --output-format json
+manga-ocr comic.zip --output-format json
 
 # 出力ディレクトリを指定
-python3 -m src.cli comic.zip -o ./results
+manga-ocr comic.zip -o ./results
 
 # 詳細ログ付きで実行
-python3 -m src.cli comic.zip --verbose
+manga-ocr comic.zip --verbose
 
 # CPUを強制使用
-python3 -m src.cli comic.zip --device cpu
+manga-ocr comic.zip --device cpu
 
 # エラー時に処理を中断
-python3 -m src.cli comic.zip --no-skip-errors
+manga-ocr comic.zip --no-skip-errors
 ```
 
 ### 出力ファイル
@@ -150,7 +196,7 @@ python3 -m src.cli comic.zip --no-skip-errors
 
 ```bash
 # 実際の使用例
-python3 -m src.cli '漫画タイトル.zip' --verbose
+manga-ocr '漫画タイトル.zip' --verbose
 
 # 出力例:
 # 画像ファイルを 218 個見つけました

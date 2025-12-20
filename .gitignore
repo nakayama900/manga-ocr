@@ -41,7 +41,8 @@ ENV/
 !INSTALL.md
 
 # Vendor directory (third-party libraries)
-vendor/
+# vendor/comic-text-detector は git submodule として管理されるため、除外しない
+# ただし、vendor/comic-text-detector/data/ 内のモデルファイルは除外
 
 # Model files (large files)
 vendor/comic-text-detector/data/*.pt
