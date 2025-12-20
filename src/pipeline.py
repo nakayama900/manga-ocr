@@ -8,7 +8,8 @@ import logging
 from PIL import Image
 
 from .detector import detect_text_regions, TextRegion
-from .ocr import recognize_text_regions, OCRResult
+from .panel_detector import detect_panels, Panel
+from .ocr import recognize_text, OCRResult
 from .exceptions import ImageProcessingError
 from .processor import ImageFile
 
@@ -73,20 +74,57 @@ def process_image(
             else:
                 raise ImageProcessingError(f"Text detection failed for {filename}: {e}")
         
-        # OCRを実行
-        ocr_results: List[OCRResult] = []
+        # コマを検出・グループ化
+        panels: List[Panel] = []
         if regions:
             try:
-                ocr_results = recognize_text_regions(regions, device=device)
-                logger.debug(f"OCR completed for {len(ocr_results)} regions in {filename}")
+                panels = detect_panels(regions)
+                logger.debug(f"Detected {len(panels)} panels in {filename}")
+            except Exception as e:
+                if skip_errors:
+                    logger.warning(f"Panel detection failed for {filename}: {e}, falling back to all regions as one panel")
+                    # フォールバック: すべての領域を1つのコマとして扱う
+                    panels = [
+                        Panel(
+                            bbox=(0, 0, image.width, image.height),
+                            text_regions=regions,
+                            reading_order=0
+                        )
+                    ]
+                else:
+                    raise ImageProcessingError(f"Panel detection failed for {filename}: {e}")
+        
+        # コマごとにOCRを実行
+        ocr_results: List[OCRResult] = []
+        all_regions: List[TextRegion] = []
+        
+        if panels:
+            try:
+                # コマの読み順で処理
+                for panel in panels:
+                    # コマ内のテキスト領域を処理（既に読み順でソート済み）
+                    for region in panel.text_regions:
+                        try:
+                            ocr_result = recognize_text(region.image, region=region, device=device)
+                            ocr_results.append(ocr_result)
+                            all_regions.append(region)
+                        except Exception as e:
+                            if skip_errors:
+                                logger.warning(f"OCR failed for region in panel {panel.reading_order}: {e}")
+                                ocr_results.append(OCRResult(text="", confidence=0.0, region=region))
+                                all_regions.append(region)
+                            else:
+                                raise ImageProcessingError(f"OCR failed for region in panel {panel.reading_order}: {e}")
+                
+                logger.debug(f"OCR completed for {len(ocr_results)} regions in {len(panels)} panels in {filename}")
             except Exception as e:
                 if skip_errors:
                     logger.warning(f"OCR failed for {filename}: {e}")
                     # 空の結果を追加
-                    ocr_results = [
-                        OCRResult(text="", confidence=0.0, region=region)
-                        for region in regions
-                    ]
+                    for panel in panels:
+                        for region in panel.text_regions:
+                            ocr_results.append(OCRResult(text="", confidence=0.0, region=region))
+                            all_regions.append(region)
                 else:
                     raise ImageProcessingError(f"OCR failed for {filename}: {e}")
         
@@ -95,7 +133,7 @@ def process_image(
         return PageResult(
             filename=filename,
             page_number=page_number,
-            regions=regions,
+            regions=all_regions,  # コマごとに処理された領域（読み順でソート済み）
             ocr_results=ocr_results,
             processing_time=processing_time
         )

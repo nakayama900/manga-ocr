@@ -95,12 +95,19 @@ OCRResult = {
     "region": TextRegion                # 元の領域情報
 }
 
-# 4. ページ単位の結果
+# 4. コマ（パネル）情報
+Panel = {
+    "bbox": Tuple[int, int, int, int],  # コマの境界 (x1, y1, x2, y2)
+    "text_regions": List[TextRegion],   # コマ内のテキスト領域（読み順でソート済み）
+    "reading_order": int                # コマの読み順（0始まり）
+}
+
+# 5. ページ単位の結果
 PageResult = {
     "filename": str,
     "page_number": int,
-    "regions": List[TextRegion],
-    "ocr_results": List[OCRResult],
+    "regions": List[TextRegion],        # すべてのテキスト領域（コマごとに処理、読み順でソート済み）
+    "ocr_results": List[OCRResult],     # OCR結果（コマごとに処理、読み順でソート済み）
     "processing_time": float
 }
 ```
