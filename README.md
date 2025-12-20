@@ -30,7 +30,17 @@ git clone <repository-url>
 cd manga-ocr
 ```
 
-### 2. 仮想環境の作成と依存関係のインストール
+### 2. comic-text-detectorのセットアップ（オプション）
+
+テキスト検出の精度を上げるために、`comic-text-detector`をセットアップできます：
+
+```bash
+git clone https://github.com/dmMaze/comic-text-detector.git vendor/comic-text-detector
+```
+
+**注意**: `comic-text-detector`がなくても動作しますが、テキスト検出の精度が下がります（画像全体を1つの領域として扱います）。
+
+### 3. 仮想環境の作成と依存関係のインストール
 
 ```bash
 # 仮想環境を作成（推奨）
@@ -41,7 +51,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. モデルファイルの配置
+### 4. モデルファイルの配置
 
 `comic-text-detector` を使用するには、事前にトレーニングされたモデルファイルが必要です。
 

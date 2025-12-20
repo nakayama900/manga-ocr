@@ -40,6 +40,9 @@ ENV/
 !README.md
 !INSTALL.md
 
+# Vendor directory (third-party libraries)
+vendor/
+
 # Model files (large files)
 vendor/comic-text-detector/data/*.pt
 vendor/comic-text-detector/data/*.onnx
