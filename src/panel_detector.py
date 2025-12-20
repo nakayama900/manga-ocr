@@ -177,26 +177,41 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
         if id(panel) in used_panels:
             sorted_panels.pop(0)
             continue
-        
+
         # 同じ段（右上のy座標が近い）のコマを探す
         row = [panel]
         used_panels.add(id(panel))
         sorted_panels.pop(0)
-        
-        # 残りのコマから同じ段のコマを探す
-        remaining_panels = []
-        for other_panel, other_rx, other_ty in sorted_panels:
-            if id(other_panel) in used_panels:
-                continue
-            
-            # 右上のy座標（上端）の差が閾値以内なら同じ段
-            if abs(ty - other_ty) <= row_threshold:
-                row.append(other_panel)
-                used_panels.add(id(other_panel))
-            else:
-                remaining_panels.append((other_panel, other_rx, other_ty))
-        
-        sorted_panels = remaining_panels
+
+        # 段のy座標範囲を追跡
+        row_min_y = ty
+        row_max_y = ty
+
+        # 残りのコマから同じ段のコマを探す（複数パスで確実にグループ化）
+        changed = True
+        while changed:
+            changed = False
+            remaining_panels = []
+
+            for other_panel, other_rx, other_ty in sorted_panels:
+                if id(other_panel) in used_panels:
+                    continue
+
+                # 段のy座標範囲内、または範囲の端から閾値以内なら同じ段
+                # これにより、段の中のいずれかのコマと近ければ同じ段として扱われる
+                if (row_min_y <= other_ty <= row_max_y or
+                    abs(other_ty - row_min_y) <= row_threshold or
+                    abs(other_ty - row_max_y) <= row_threshold):
+                    row.append(other_panel)
+                    used_panels.add(id(other_panel))
+                    # 段のy座標範囲を更新
+                    row_min_y = min(row_min_y, other_ty)
+                    row_max_y = max(row_max_y, other_ty)
+                    changed = True
+                else:
+                    remaining_panels.append((other_panel, other_rx, other_ty))
+
+            sorted_panels = remaining_panels
         
         # デバッグログ: ソート前の順序
         if len(row) > 1:

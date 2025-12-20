@@ -236,24 +236,42 @@ def sort_by_reading_order(regions: List[TextRegion]) -> List[TextRegion]:
     # 段（行）ごとにグループ化
     rows: List[List[Tuple[TextRegion, float, float]]] = []
     used = set()
-    
+
     # 右上のy座標（上端）でソートして、上から順に処理
-    for region, rx, ty, _ in sorted(region_data, key=lambda x: x[2]):  # 上端y座標でソート
+    sorted_region_data = sorted(region_data, key=lambda x: x[2])  # 上端y座標でソート
+
+    for region, rx, ty, _ in sorted_region_data:
         if id(region) in used:
             continue
-        
+
         # 同じ段（右上のy座標が近い）の領域を探す
         row = [(region, rx, ty)]
         used.add(id(region))
-        
-        for other_region, other_rx, other_ty, _ in region_data:
-            if id(other_region) in used:
-                continue
-            
-            # 右上のy座標（上端）の差が閾値以内なら同じ段
-            if abs(ty - other_ty) <= row_threshold:
-                row.append((other_region, other_rx, other_ty))
-                used.add(id(other_region))
+
+        # 段のy座標範囲を追跡
+        row_min_y = ty
+        row_max_y = ty
+
+        # 残りの領域から同じ段の領域を探す（複数パスで確実にグループ化）
+        changed = True
+        while changed:
+            changed = False
+
+            for other_region, other_rx, other_ty, _ in region_data:
+                if id(other_region) in used:
+                    continue
+
+                # 段のy座標範囲内、または範囲の端から閾値以内なら同じ段
+                # これにより、段の中のいずれかの領域と近ければ同じ段として扱われる
+                if (row_min_y <= other_ty <= row_max_y or
+                    abs(other_ty - row_min_y) <= row_threshold or
+                    abs(other_ty - row_max_y) <= row_threshold):
+                    row.append((other_region, other_rx, other_ty))
+                    used.add(id(other_region))
+                    # 段のy座標範囲を更新
+                    row_min_y = min(row_min_y, other_ty)
+                    row_max_y = max(row_max_y, other_ty)
+                    changed = True
         
         # 段内でソート: まず右端x座標（右から左）、同じなら上端y座標（上から下）
         # これにより、右上が最優先になる
