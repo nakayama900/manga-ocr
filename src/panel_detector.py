@@ -60,22 +60,20 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
     avg_width = sum(w for _, _, _, w, _ in region_data) / len(region_data)
     avg_height = sum(h for _, _, _, _, h in region_data) / len(region_data)
     
-    # コマ間の距離閾値: 平均的な領域サイズに基づいて動的に調整
-    # 幅と高さの大きい方を使用し、1.5倍から2.5倍の範囲
-    base_threshold = max(avg_width, avg_height)
-    distance_threshold = base_threshold * 2.0
-    
-    # 最小値・最大値も設定（画像サイズに応じて）
     # 画像サイズを推定（領域の最大座標から）
     max_x = max(x2 for r in regions for x1, y1, x2, y2 in [r.bbox])
     max_y = max(y2 for r in regions for x1, y1, x2, y2 in [r.bbox])
     image_width = max_x
     image_height = max_y
     
-    # 閾値の最小値・最大値を設定
-    min_threshold = max(30, base_threshold * 1.0)
-    max_threshold = min(image_width * 0.15, image_height * 0.15)
-    distance_threshold = max(min_threshold, min(distance_threshold, max_threshold))
+    # コマ内のテキスト領域をグループ化するための閾値
+    # 非常に近接している領域のみを同じコマとして扱う
+    # コマ内のテキスト領域は通常、領域サイズの2倍以内に収まる
+    # ただし、画像サイズに対して適切な比率を保つ
+    panel_threshold_x = max(avg_width * 2.0, min(image_width * 0.08, 150))
+    panel_threshold_y = max(avg_height * 2.0, min(image_height * 0.08, 150))
+    
+    logger.debug(f"Panel detection thresholds: x={panel_threshold_x:.1f}, y={panel_threshold_y:.1f} (avg_size={avg_width:.1f}x{avg_height:.1f}, image={image_width}x{image_height})")
     
     # コマごとにグループ化
     panels: List[List[TextRegion]] = []
@@ -85,7 +83,7 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
         if id(region) in used:
             continue
         
-        # 同じコマ（近接する領域）を探す
+        # 同じコマ（非常に近接する領域）を探す
         panel_regions = [region]
         used.add(id(region))
         
@@ -93,16 +91,13 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
             if id(other_region) in used:
                 continue
             
-            # 領域間の距離を計算（マンハッタン距離を使用）
-            # より直感的で、コマの判定に適している
+            # 領域間の距離を計算
             distance_x = abs(cx - other_cx)
             distance_y = abs(cy - other_cy)
-            manhattan_distance = distance_x + distance_y
             
-            # 距離が閾値以内なら同じコマ
-            # ただし、x方向とy方向の両方を考慮
-            # より近い方向の距離を重視
-            if distance_x <= distance_threshold and distance_y <= distance_threshold * 1.5:
+            # 両方向で非常に近接している場合のみ同じコマとして扱う
+            # これにより、コマを過剰にグループ化することを防ぐ
+            if distance_x <= panel_threshold_x and distance_y <= panel_threshold_y:
                 panel_regions.append(other_region)
                 used.add(id(other_region))
         
@@ -149,18 +144,18 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
         ]
     
     # コマの読み順を決定（既存のsort_by_reading_orderアルゴリズムを活用）
-    # コマの中心座標を使用してソート
-    panel_centers = []
+    # コマの右上座標（右端x、上端y）を使用してソート
+    panel_top_right = []
     for panel in panel_objects:
         x1, y1, x2, y2 = panel.bbox
-        center_x = (x1 + x2) / 2
-        center_y = (y1 + y2) / 2
-        panel_centers.append((panel, center_x, center_y))
+        right_x = x2  # 右端x座標
+        top_y = y1    # 上端y座標（右上のy座標）
+        panel_top_right.append((panel, right_x, top_y))
     
     # 段組みを考慮したソート（既存のアルゴリズムと同様）
-    # 画像の高さを取得
-    max_panel_y = max(cy for _, _, cy in panel_centers)
-    min_panel_y = min(cy for _, _, cy in panel_centers)
+    # 画像の高さを取得（右上のy座標を使用）
+    max_panel_y = max(ty for _, _, ty in panel_top_right)
+    min_panel_y = min(ty for _, _, ty in panel_top_right)
     image_height = max_panel_y - min_panel_y
     
     # 段の閾値: 平均的なコマの高さの60%以内を同じ段とみなす
@@ -171,29 +166,53 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
     rows: List[List[Panel]] = []
     used_panels = set()
     
-    for panel, cx, cy in sorted(panel_centers, key=lambda x: x[2]):  # y座標でソート
+    # 右上のy座標（上端）でソート
+    for panel, rx, ty in sorted(panel_top_right, key=lambda x: x[2]):  # 上端y座標でソート
         if id(panel) in used_panels:
             continue
         
-        # 同じ段（y座標が近い）のコマを探す
+        # 同じ段（右上のy座標が近い）のコマを探す
         row = [panel]
         used_panels.add(id(panel))
         
-        for other_panel, other_cx, other_cy in panel_centers:
+        for other_panel, other_rx, other_ty in panel_top_right:
             if id(other_panel) in used_panels:
                 continue
             
-            # y座標の差が閾値以内なら同じ段
-            if abs(cy - other_cy) <= row_threshold:
+            # 右上のy座標（上端）の差が閾値以内なら同じ段
+            if abs(ty - other_ty) <= row_threshold:
                 row.append(other_panel)
                 used_panels.add(id(other_panel))
         
-        # 段内で右から左にソート（x座標の降順）
-        row.sort(key=lambda p: -(p.bbox[0] + p.bbox[2]) / 2)  # 中心x座標の降順
+        # デバッグログ: ソート前の順序
+        if len(row) > 1:
+            logger.debug(f"段内コマ（ソート前）: {len(row)}個")
+            for i, p in enumerate(row):
+                x1, y1, x2, y2 = p.bbox
+                logger.debug(f"  コマ[{i}]: 右上=({x2},{y1}), 右端={x2}, 上端={y1}")
+        
+        # 段内で右から左にソート（右上のx座標=右端の降順、同じ場合は右上のy座標=上端の昇順）
+        row.sort(key=lambda p: (-p.bbox[2], p.bbox[1]))  # 右端x座標の降順、同じ場合は上端y座標の昇順
+        
+        # デバッグログ: ソート後の順序
+        if len(row) > 1:
+            logger.debug(f"段内コマ（ソート後）: {len(row)}個")
+            for i, p in enumerate(row):
+                x1, y1, x2, y2 = p.bbox
+                logger.debug(f"  コマ[{i}]: 右上=({x2},{y1}), 右端={x2}, 上端={y1}")
+        
         rows.append(row)
     
-    # 段を上から下にソート（各段の最小y座標でソート）
-    rows.sort(key=lambda row: min(p.bbox[1] for p in row))
+    # 段を上から下にソート（各段の最小y座標=右上のy座標でソート）
+    rows.sort(key=lambda row: min(p.bbox[1] for p in row))  # 上端y座標（右上のy座標）でソート
+    
+    # デバッグログ: 最終的な読み順
+    logger.debug(f"コマの読み順（最終）: {len(rows)}段、合計{sum(len(row) for row in rows)}コマ")
+    for row_idx, row in enumerate(rows):
+        logger.debug(f"  段[{row_idx}]: {len(row)}コマ")
+        for panel_idx, panel in enumerate(row):
+            x1, y1, x2, y2 = panel.bbox
+            logger.debug(f"    コマ[{panel_idx}]: 右上=({x2},{y1}), 右端={x2}, 上端={y1}")
     
     # フラット化して読み順を設定
     result = []

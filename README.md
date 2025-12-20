@@ -26,19 +26,31 @@ Apple Silicon (M1/M2/M3/M4) のMPS (Metal Performance Shaders) を活用し、�
 ### 1. リポジトリのクローン
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/kazuki-ookura/manga-ocr.git
 cd manga-ocr
 ```
 
-### 2. comic-text-detectorのセットアップ（オプション）
+### 2. comic-text-detectorのセットアップ
 
-テキスト検出の精度を上げるために、`comic-text-detector`をセットアップできます：
+テキスト検出機能を使用するために、`comic-text-detector`をセットアップします：
 
 ```bash
+# vendorディレクトリが存在しない場合は作成
+mkdir -p vendor
+
+# comic-text-detectorをクローン
 git clone https://github.com/dmMaze/comic-text-detector.git vendor/comic-text-detector
+
+# クローンが成功したことを確認
+if [ -d "vendor/comic-text-detector" ]; then
+    echo "✓ comic-text-detector のセットアップが完了しました"
+else
+    echo "✗ comic-text-detector のセットアップに失敗しました"
+    exit 1
+fi
 ```
 
-**注意**: `comic-text-detector`がなくても動作しますが、テキスト検出の精度が下がります（画像全体を1つの領域として扱います）。
+**重要**: `comic-text-detector`は必須です。セットアップしないとテキスト検出機能が動作しません。
 
 ### 3. 仮想環境の作成と依存関係のインストール
 
@@ -55,16 +67,56 @@ pip install -r requirements.txt
 
 `comic-text-detector` を使用するには、事前にトレーニングされたモデルファイルが必要です。
 
+#### 方法1: 自動ダウンロード（推奨）
+
+以下のコマンドで自動的にダウンロードして配置します：
+
+```bash
+# dataディレクトリが存在しない場合は作成
+mkdir -p vendor/comic-text-detector/data
+
+# モデルファイルをダウンロード（約76MB）
+curl -L -o vendor/comic-text-detector/data/comictextdetector.pt \
+  "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt"
+
+# ダウンロードが成功したことを確認
+if [ -f "vendor/comic-text-detector/data/comictextdetector.pt" ]; then
+    file_size=$(ls -lh vendor/comic-text-detector/data/comictextdetector.pt | awk '{print $5}')
+    echo "✓ モデルファイルのダウンロードが完了しました（サイズ: $file_size）"
+else
+    echo "✗ モデルファイルのダウンロードに失敗しました"
+    echo "方法2の手動ダウンロードを試してください"
+    exit 1
+fi
+```
+
+#### 方法2: 手動ダウンロード
+
+自動ダウンロードが失敗した場合、以下の手順で手動でダウンロードしてください：
+
 1. 以下のリンクからモデルファイルをダウンロードしてください：
-   - [manga-image-translator リリースページ](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.2.1)
+   - [manga-image-translator 最新リリースページ](https://github.com/zyddnys/manga-image-translator/releases/latest)
+   - [manga-image-translator beta-0.3 リリースページ](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
    - [Google Drive](https://drive.google.com/drive/folders/1cTsXP5NYTCjhPVxwScdhxqJleHuIOyXG?usp=sharing)
 
-2. ダウンロードしたモデルファイル（`comictextdetector.pt` または `comictextdetector.pt.onnx`）を以下の場所に配置してください：
-   ```
-   vendor/comic-text-detector/data/comictextdetector.pt
+2. ダウンロードしたモデルファイル（`comictextdetector.pt`）を以下の場所に配置してください：
+   ```bash
+   # dataディレクトリが存在しない場合は作成
+   mkdir -p vendor/comic-text-detector/data
+   
+   # ダウンロードしたファイルを配置（パスを適宜変更してください）
+   mv ~/Downloads/comictextdetector.pt vendor/comic-text-detector/data/
+   
+   # 配置が成功したことを確認
+   if [ -f "vendor/comic-text-detector/data/comictextdetector.pt" ]; then
+       echo "✓ モデルファイルの配置が完了しました"
+   else
+       echo "✗ モデルファイルが見つかりません"
+       exit 1
+   fi
    ```
 
-**注意**: モデルファイルは約100MB以上のサイズがあります。モデルファイルが配置されていない場合、テキスト検出機能は使用できません（フォールバックとして画像全体を1つの領域として扱います）。
+**重要**: モデルファイル（約76MB）は必須です。配置されていない場合、テキスト検出機能は動作しません。
 
 ## 使用方法
 
@@ -112,7 +164,8 @@ python3 -m src.cli '漫画タイトル.zip' --verbose
 
 ## 注意事項
 
-- **モデルファイル**: `comic-text-detector` のモデルファイル（`comictextdetector.pt`）が必要です。上記のインストール手順を参照してください。
+- **comic-text-detector**: テキスト検出機能を使用するために必須です。インストール手順の「2. comic-text-detectorのセットアップ」を参照してください。
+- **モデルファイル**: `comic-text-detector` のモデルファイル（`comictextdetector.pt`）が必須です。インストール手順の「4. モデルファイルの配置」を参照してください。
 - **初回実行**: 初回実行時、`manga-ocr` がモデルをダウンロードするため時間がかかります。
 - **処理時間**: 画像数やサイズによって処理時間が異なります。大量の画像がある場合は時間がかかります。
 - **MPSサポート**: OCR処理はMPSを使用して高速に実行されます。テキスト検出はCPUで実行されます（詳細は `docs/PERFORMANCE.md` を参照）。

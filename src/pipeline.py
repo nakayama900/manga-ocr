@@ -103,16 +103,35 @@ def process_image(
                 # コマの読み順で処理
                 for panel in panels:
                     # コマ内のテキスト領域を処理（既に読み順でソート済み）
-                    for region in panel.text_regions:
+                    for region_idx, region in enumerate(panel.text_regions):
                         try:
-                            ocr_result = recognize_text(region.image, region=region, device=device)
+                            # コマの読み順を基準に、コマ内のテキスト領域の読み順を再設定
+                            # コマの読み順 * 1000 + コマ内のインデックス で一意の読み順を生成
+                            # これにより、コマの読み順が優先され、コマ内のテキスト領域は相対的な順序を保つ
+                            adjusted_reading_order = panel.reading_order * 1000 + region_idx
+                            
+                            # regionのreading_orderを更新
+                            updated_region = TextRegion(
+                                bbox=region.bbox,
+                                image=region.image,
+                                reading_order=adjusted_reading_order
+                            )
+                            
+                            ocr_result = recognize_text(updated_region.image, region=updated_region, device=device)
                             ocr_results.append(ocr_result)
-                            all_regions.append(region)
+                            all_regions.append(updated_region)
                         except Exception as e:
                             if skip_errors:
                                 logger.warning(f"OCR failed for region in panel {panel.reading_order}: {e}")
-                                ocr_results.append(OCRResult(text="", confidence=0.0, region=region))
-                                all_regions.append(region)
+                                # エラー時も読み順を更新
+                                adjusted_reading_order = panel.reading_order * 1000 + region_idx
+                                error_region = TextRegion(
+                                    bbox=region.bbox,
+                                    image=region.image,
+                                    reading_order=adjusted_reading_order
+                                )
+                                ocr_results.append(OCRResult(text="", confidence=0.0, region=error_region))
+                                all_regions.append(error_region)
                             else:
                                 raise ImageProcessingError(f"OCR failed for region in panel {panel.reading_order}: {e}")
                 
@@ -120,11 +139,17 @@ def process_image(
             except Exception as e:
                 if skip_errors:
                     logger.warning(f"OCR failed for {filename}: {e}")
-                    # 空の結果を追加
+                    # 空の結果を追加（読み順を更新）
                     for panel in panels:
-                        for region in panel.text_regions:
-                            ocr_results.append(OCRResult(text="", confidence=0.0, region=region))
-                            all_regions.append(region)
+                        for region_idx, region in enumerate(panel.text_regions):
+                            adjusted_reading_order = panel.reading_order * 1000 + region_idx
+                            error_region = TextRegion(
+                                bbox=region.bbox,
+                                image=region.image,
+                                reading_order=adjusted_reading_order
+                            )
+                            ocr_results.append(OCRResult(text="", confidence=0.0, region=error_region))
+                            all_regions.append(error_region)
                 else:
                     raise ImageProcessingError(f"OCR failed for {filename}: {e}")
         
