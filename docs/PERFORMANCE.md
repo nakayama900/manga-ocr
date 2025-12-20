@@ -7,11 +7,31 @@
 1. **テキスト検出** (`comic-text-detector`)
 2. **OCR処理** (`manga-ocr`)
 
-それぞれが異なるデバイスを使用する可能性があります。
+それぞれが異なるデバイスを使用する可能性があります。使用されるデバイスは、お使いの環境（OS、GPU）によって自動的に選択されます。
 
-## MPS（Metal Performance Shaders）とは
+## 対応デバイス
+
+### Apple Silicon Mac (M1/M2/M3/M4)
+- **OCR処理**: MPS（Metal Performance Shaders）を使用
+- **テキスト検出**: CPUを使用（MPS非対応のため）
+
+### Windows / Linux (NVIDIA GPU搭載)
+- **OCR処理**: CUDAを使用（利用可能な場合）、またはCPU
+- **テキスト検出**: CUDAを使用（利用可能な場合）、またはCPU
+
+### Intel Mac / CPUのみの環境
+- **OCR処理**: CPUを使用
+- **テキスト検出**: CPUを使用
+
+## GPUアクセラレーション技術
+
+### MPS（Metal Performance Shaders）
 
 **MPS（Metal Performance Shaders）** は、Appleが開発したGPUアクセラレーション技術です。Apple Silicon（M1、M2、M3、M4など）を搭載したMacで、機械学習や画像処理を高速化するために使用されます。
+
+### CUDA
+
+**CUDA** は、NVIDIAが開発したGPUアクセラレーション技術です。NVIDIA GPUを搭載したWindows/Linuxマシンで、機械学習や画像処理を高速化するために使用されます。
 
 ### なぜ速いのか？
 
@@ -37,15 +57,18 @@
 
 ### OCR処理（manga-ocr）
 
-**使用デバイス**: MPS（Apple Siliconの場合）またはCPU
+**使用デバイス**: 環境に応じて自動選択
+- **Apple Silicon Mac**: MPS（自動検出）
+- **Windows/Linux (NVIDIA GPU)**: CUDA（自動検出）
+- **その他**: CPU
 
 **理由**:
-- `manga-ocr` はPyTorchベースで、MPSを自動的に検出して使用します
-- Apple Silicon Macでは、MPSを使用することで高速な推論が可能です
+- `manga-ocr` はPyTorchベースで、利用可能なGPUを自動的に検出して使用します
+- GPUが利用可能な場合、CPUよりも高速に推論が可能です
 
 **影響**:
-- OCR処理はMPSで高速に実行されます
-- 大量のテキスト領域がある場合でも、MPSにより高速に処理できます
+- GPUが利用可能な場合、OCR処理は高速に実行されます
+- 大量のテキスト領域がある場合でも、GPUにより高速に処理できます
 
 ## パフォーマンス
 
@@ -57,12 +80,13 @@
 
 ### パフォーマンス比較
 
-| デバイス | OCR処理速度（1領域あたり） |
-|---------|------------------------|
-| CPU | 2-5秒 |
-| MPS | 0.5-2秒 |
+| デバイス | OCR処理速度（1領域あたり） | 対応環境 |
+|---------|------------------------|---------|
+| CPU | 2-5秒 | すべての環境 |
+| MPS | 0.5-2秒 | Apple Silicon Mac |
+| CUDA | 0.5-2秒 | Windows/Linux (NVIDIA GPU) |
 
-**約2-4倍高速**になります！
+**GPU使用時は約2-4倍高速**になります！
 
 ## 確認方法
 
@@ -72,7 +96,7 @@
 python3 -m src.cli comic.zip --verbose
 ```
 
-出力例：
+出力例（Apple Silicon Mac）：
 ```
 使用デバイス: mps
 comic-text-detectorはMPSを直接サポートしていないため、テキスト検出はCPUで実行されます。
@@ -80,15 +104,29 @@ OCR処理（manga-ocr）はMPSを使用します。
 2025-12-20 12:30:23.957 | INFO | manga_ocr.ocr:__init__:25 - Using MPS
 ```
 
-「Using MPS」と表示されていれば、MPSが使用されています。
+出力例（Windows/Linux with NVIDIA GPU）：
+```
+使用デバイス: cuda
+OCR処理（manga-ocr）はCUDAを使用します。
+```
+
+「Using MPS」または「Using CUDA」と表示されていれば、GPUが使用されています。
 
 ## よくある質問
+
+### Q: GPUは自動的に使用される？
+
+A: はい。利用可能なGPU（MPS/CUDA）は自動的に検出され、使用されます。GPUが利用できない場合はCPUで実行されます。
 
 ### Q: MPSはすべてのMacで使える？
 
 A: いいえ。Apple Silicon（M1/M2/M3/M4）を搭載したMacでのみ使用できます。Intel Macでは使用できません。
 
-### Q: MPSを使わないとどうなる？
+### Q: CUDAはどの環境で使える？
+
+A: NVIDIA GPUを搭載したWindows/Linuxマシンで使用できます。CUDAドライバーとPyTorchのCUDA対応版が必要です。
+
+### Q: GPUを使わないとどうなる？
 
 A: CPUで処理されます。速度は遅くなりますが、結果は同じです。
 

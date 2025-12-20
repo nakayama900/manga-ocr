@@ -15,8 +15,11 @@ Apple Silicon (M1/M2/M3/M4) のMPS (Metal Performance Shaders) を活用し、�
 ## 要件
 
 - Python 3.10+
-- Apple Silicon Mac (M1/M2/M3/M4) - MPS対応
-- PyTorch (MPS対応版)
+- **推奨環境**:
+  - Apple Silicon Mac (M1/M2/M3/M4) - MPS対応（最速）
+  - Windows/Linux with NVIDIA GPU - CUDA対応（高速）
+  - その他の環境でもCPUで動作します（やや遅い）
+- PyTorch（GPU対応版を推奨）
 
 ## インストール
 
