@@ -207,3 +207,63 @@ manga-ocr '漫画タイトル.zip' --verbose
 
 MIT License
 
+## デモ
+
+ツールの基本的な動作を示すための簡単なデモです。
+
+### 1. 入力画像
+
+以下のような、単純なコマ割りとセリフを含む3ページの漫画画像（`page1.png`〜`page3.png`）を用意し、`demo.zip`として圧縮します。
+
+<p align="center">
+  <img src="demo_images_png/page1.png" width="250" alt="Demo Page 1">
+  <img src="demo_images_png/page2.png" width="250" alt="Demo Page 2">
+  <img src="demo_images_png/page3.png" width="250" alt="Demo Page 3">
+</p>
+
+### 2. 実行コマンド
+
+まず、`demo_images_png` ディレクトリ内の画像を `demo.zip` という名前で圧縮します。
+
+```bash
+zip -j demo.zip demo_images_png/page1.png demo_images_png/page2.png demo_images_png/page3.png
+```
+
+次に、生成された `demo.zip` に対して、以下のコマンドを実行します。
+
+```bash
+manga-ocr demo.zip
+```
+
+### 3. 出力結果
+
+実行後、`demo_output.txt` に以下の内容が出力されます。
+
+```text
+[page1.png]
+こんにちは
+これは
+Manga OCRの
+デモです。
+
+[page2.png]
+これは
+２ページ目です、
+読み順は
+どうなるかな？
+
+[page3.png]
+最後の
+ページです
+テストは
+うまく
+いくかな？
+
+```
+
+### 4. 結果の解説
+
+- **1ページ目と3ページ目**では、漫画の基本的な読み順（右上→左下、段ごと）が正しく認識されています。
+- **2ページ目**では、縦長のコマが影響し、一部の読み順が人間の直感とは異なる結果になっています。
+
+このように、本ツールは多くの基本的なレイアウトでセリフの順序を正しく認識できますが、複雑なコマ割りでは意図しない順序になる場合があることを示しています。
