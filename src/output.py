@@ -25,7 +25,10 @@ def generate_json_output(results: List[PageResult], output_path: Path) -> None:
         text_regions = []
         texts = []
         
-        for ocr_result in result.ocr_results:
+        # region_id（reading_order）でソートして、コマの読み順を保証
+        sorted_ocr_results = sorted(result.ocr_results, key=lambda r: r.region.reading_order if r.region else 0)
+        
+        for ocr_result in sorted_ocr_results:
             if ocr_result.region is not None:
                 x1, y1, x2, y2 = ocr_result.region.bbox
                 text_regions.append({
@@ -72,7 +75,9 @@ def generate_text_output(results: List[PageResult], output_path: Path) -> None:
             f.write(f"[{result.filename}]\n")
             
             # テキストを出力（読み順でソート済み）
-            for ocr_result in result.ocr_results:
+            # region_id（reading_order）でソートして、コマの読み順を保証
+            sorted_ocr_results = sorted(result.ocr_results, key=lambda r: r.region.reading_order if r.region else 0)
+            for ocr_result in sorted_ocr_results:
                 if ocr_result.text:
                     f.write(f"{ocr_result.text}\n")
             

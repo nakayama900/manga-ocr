@@ -190,9 +190,11 @@ def sort_by_reading_order(regions: List[TextRegion]) -> List[TextRegion]:
     - 段組みを考慮（上段→下段、各段内で右→左）
     
     アルゴリズム:
-    1. 領域をy座標でグループ化（閾値内のy座標差を同じ段とみなす）
-    2. 各段内でx座標でソート（右から左、つまり-x座標でソート）
-    3. 段をy座標でソート（上から下）
+    1. 全領域をy中心座標でソートする。
+    2. ソートされたリストを順に見ていき、段の最初の領域とのy座標差が
+       閾値以内であれば同じ段（行）としてグループ化する。
+    3. 各段内でx中心座標でソート（右から左）。
+    4. 最後に、段の順序（上から下）を維持したまま、全体の読み順を割り当てる。
     
     Args:
         regions: テキスト領域のリスト
@@ -212,91 +214,71 @@ def sort_by_reading_order(regions: List[TextRegion]) -> List[TextRegion]:
             )
         ]
     
-    # 各領域の右上座標（右端x、上端y）と高さを計算
+    # 各領域の中心座標と高さを計算
     region_data = []
     for region in regions:
         x1, y1, x2, y2 = region.bbox
-        right_x = x2  # 右端x座標
-        top_y = y1    # 上端y座標（右上のy座標）
+        center_x = (x1 + x2) / 2
+        center_y = (y1 + y2) / 2
         height = y2 - y1
-        region_data.append((region, right_x, top_y, height))
+        region_data.append({'region': region, 'cx': center_x, 'cy': center_y, 'h': height})
     
-    # 画像の高さを取得（段の閾値計算用、右上のy座標を使用）
-    max_y = max(ty for _, _, ty, _ in region_data)
-    min_y = min(ty for _, _, ty, _ in region_data)
-    image_height = max_y - min_y
-    
+    # 画像の高さを取得（段の閾値計算用）
+    if len(region_data) > 1:
+        max_y = max(r['cy'] for r in region_data)
+        min_y = min(r['cy'] for r in region_data)
+        image_height = max_y - min_y
+    else:
+        image_height = sum(r['h'] for r in region_data)
+
     # 平均的な領域の高さを計算
-    avg_height = sum(h for _, _, _, h in region_data) / len(region_data) if region_data else 50
+    avg_height = sum(r['h'] for r in region_data) / len(region_data) if region_data else 50
     
-    # 段の閾値: 平均的な領域の高さの60%以内を同じ段とみなす
-    # 最小値として15ピクセル、最大値として画像高さの8%を保証
-    row_threshold = max(15, min(avg_height * 0.6, image_height * 0.08))
+    # 段の閾値: 平均的な領域の高さの50%以内を同じ段とみなす
+    row_threshold = max(15, min(avg_height * 0.5, image_height * 0.08 if image_height > 0 else 50))
+
+    # y中心座標でソート
+    sorted_regions = sorted(region_data, key=lambda r: r['cy'])
+
+    if not sorted_regions:
+        return []
+
+    # 新しい、よりシンプルなグループ化ロジック
+    rows = []
+    current_row = [sorted_regions[0]]
     
-    # 段（行）ごとにグループ化
-    rows: List[List[Tuple[TextRegion, float, float]]] = []
-    used = set()
-
-    # 右上のy座標（上端）でソートして、上から順に処理
-    sorted_region_data = sorted(region_data, key=lambda x: x[2])  # 上端y座標でソート
-
-    for region, rx, ty, _ in sorted_region_data:
-        if id(region) in used:
-            continue
-
-        # 同じ段（右上のy座標が近い）の領域を探す
-        row = [(region, rx, ty)]
-        used.add(id(region))
-
-        # 段のy座標範囲を追跡
-        row_min_y = ty
-        row_max_y = ty
-
-        # 残りの領域から同じ段の領域を探す（複数パスで確実にグループ化）
-        changed = True
-        while changed:
-            changed = False
-
-            for other_region, other_rx, other_ty, _ in region_data:
-                if id(other_region) in used:
-                    continue
-
-                # 段のy座標範囲内、または範囲の端から閾値以内なら同じ段
-                # これにより、段の中のいずれかの領域と近ければ同じ段として扱われる
-                if (row_min_y <= other_ty <= row_max_y or
-                    abs(other_ty - row_min_y) <= row_threshold or
-                    abs(other_ty - row_max_y) <= row_threshold):
-                    row.append((other_region, other_rx, other_ty))
-                    used.add(id(other_region))
-                    # 段のy座標範囲を更新
-                    row_min_y = min(row_min_y, other_ty)
-                    row_max_y = max(row_max_y, other_ty)
-                    changed = True
+    for region_item in sorted_regions[1:]:
+        # 段の基準となるy座標（段の最初の要素のy座標）と比較
+        base_cy = current_row[0]['cy']
         
-        # 段内でソート: まず右端x座標（右から左）、同じなら上端y座標（上から下）
-        # これにより、右上が最優先になる
-        # 中心座標ではなく、右上座標（右端x、上端y）で評価
-        row.sort(key=lambda x: (-x[0].bbox[2], x[0].bbox[1]))  # 右端x座標の降順、次に上端y座標の昇順
-        rows.append(row)
+        if abs(region_item['cy'] - base_cy) <= row_threshold:
+            # y座標が近いので同じ段に追加
+            current_row.append(region_item)
+        else:
+            # 新しい段を開始
+            rows.append(current_row)
+            current_row = [region_item]
     
-    # 段を上から下にソート（各段の最小y座標=右上のy座標でソート）
-    # 最小y座標（上端）を使うことで、段の上端で比較できる
-    rows.sort(key=lambda row: min(ty for _, _, ty in row))
-    
+    # 最後の段を追加
+    if current_row:
+        rows.append(current_row)
+
     # フラット化して読み順を設定
     result = []
     reading_order = 0
     for row in rows:
-        for region, _, _ in row:
+        # 段内でx中心座標の降順（右から左）でソート
+        row.sort(key=lambda r: -r['cx'])
+        for item in row:
             result.append(
                 TextRegion(
-                    bbox=region.bbox,
-                    image=region.image,
+                    bbox=item['region'].bbox,
+                    image=item['region'].image,
                     reading_order=reading_order
                 )
             )
             reading_order += 1
-    
+            
     return result
 
 

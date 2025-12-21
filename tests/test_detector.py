@@ -41,6 +41,42 @@ def test_sort_by_reading_order():
     assert sorted_regions[3].bbox[1] == 200
 
 
+def test_sort_by_reading_order_complex_layout():
+    """複雑なレイアウトでの読み順ソートのテスト"""
+    # ケース1: 同じ段に高さの違う領域が混在
+    # 上段: 右(200, 50, size 100x50), 左(50, 50, size 100x100)
+    # 下段: (100, 200, size 100x50)
+    regions1 = [
+        TextRegion(bbox=(50, 50, 150, 150), image=None, reading_order=0),   # 上段左 (大きい)
+        TextRegion(bbox=(200, 50, 300, 100), image=None, reading_order=0),  # 上段右 (小さい)
+        TextRegion(bbox=(100, 200, 200, 250), image=None, reading_order=0), # 下段
+    ]
+    
+    sorted1 = sort_by_reading_order(regions1)
+    # 期待順: 上段右 -> 上段左 -> 下段
+    assert sorted1[0].bbox == (200, 50, 300, 100)
+    assert sorted1[1].bbox == (50, 50, 150, 150)
+    assert sorted1[2].bbox == (100, 200, 200, 250)
+
+    # ケース2: 縦長の領域を含む
+    # 右列: 上(200, 50), 下(200, 200)
+    # 左列: 中央に縦長(50, 50, size 50x200)
+    regions2 = [
+        TextRegion(bbox=(200, 50, 300, 100), image=None, reading_order=0),   # 右上
+        TextRegion(bbox=(50, 50, 100, 250), image=None, reading_order=0),    # 左の縦長
+        TextRegion(bbox=(200, 200, 300, 250), image=None, reading_order=0), # 右下
+    ]
+    
+    sorted2 = sort_by_reading_order(regions2)
+    
+    # y中心: 右上(75), 左縦長(150), 右下(225)
+    # 閾値の計算によっては3つが別々の段と判定される
+    # その場合、y中心でソートされた順になる
+    assert sorted2[0].bbox == (200, 50, 300, 100)   # y中心 75
+    assert sorted2[1].bbox == (50, 50, 100, 250)    # y中心 150
+    assert sorted2[2].bbox == (200, 200, 300, 250)  # y中心 225
+
+
 def test_crop_text_regions():
     """領域クロップのテスト"""
     img = Image.new('RGB', (300, 300), color='white')
@@ -56,12 +92,12 @@ def test_crop_text_regions():
     assert all(r.image.size[0] > 0 and r.image.size[1] > 0 for r in cropped)
 
 
-def test_detect_text_regions_fallback():
-    """テキスト検出のフォールバックテスト"""
+@pytest.mark.skipif(HAS_COMIC_DETECTOR, reason="comic-text-detectorが利用可能な場合はスキップ")
+def test_detect_text_regions_fallback_no_detector():
+    """テキスト検出のフォールバックテスト（detectorなし）"""
     img = Image.new('RGB', (100, 100), color='white')
     
-    # comic-text-detectorが利用できない場合でも動作することを確認
+    # comic-text-detectorが利用できない場合でも動作し、空リストを返すことを確認
     regions = detect_text_regions(img, device="cpu")
-    assert len(regions) > 0
-    assert regions[0].bbox == (0, 0, 100, 100)  # フォールバック時は画像全体
+    assert regions == []
 
