@@ -33,3 +33,6 @@ tqdm>=4.66.0
 # Testing
 pytest>=7.0.0
 
+# Clustering for panel detection
+scikit-learn>=1.0.0
+
