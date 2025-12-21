@@ -139,21 +139,28 @@ manga-ocr comic.zip
 python3 -m src.cli comic.zip
 ```
 
-# JSON形式のみ出力
-manga-ocr comic.zip --output-format json
+### コマンドオプション
 
-# 出力ディレクトリを指定
-manga-ocr comic.zip -o ./results
-
-# 詳細ログ付きで実行
-manga-ocr comic.zip --verbose
-
-# CPUを強制使用
-manga-ocr comic.zip --device cpu
-
-# エラー時に処理を中断
-manga-ocr comic.zip --no-skip-errors
-```
+- **JSON形式のみ出力:**
+  ```bash
+  manga-ocr comic.zip --output-format json
+  ```
+- **出力ディレクトリを指定:**
+  ```bash
+  manga-ocr comic.zip -o ./results
+  ```
+- **詳細ログ付きで実行:**
+  ```bash
+  manga-ocr comic.zip --verbose
+  ```
+- **CPUを強制使用:**
+  ```bash
+  manga-ocr comic.zip --device cpu
+  ```
+- **エラー時に処理を中断:**
+  ```bash
+  manga-ocr comic.zip --no-skip-errors
+  ```
 
 ### 出力ファイル
 
