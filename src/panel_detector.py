@@ -102,50 +102,67 @@ def detect_panels(regions: List[TextRegion]) -> List[Panel]:
             )
         )
 
-    # コマの読み順を決定 (sort_by_reading_orderと似たロジック)
-    # コマの中心座標でソート
+    # --- パネルの読み順を決定する新しいロジック ---
+    from functools import cmp_to_key
+
+    def _compare_panels(p1_data, p2_data):
+        """2つのパネルの読み順を比較する関数"""
+        p1_bbox = p1_data['panel'].bbox
+        p2_bbox = p2_data['panel'].bbox
+
+        x1_1, y1_1, x2_1, y2_1 = p1_bbox
+        x1_2, y1_2, x2_2, y2_2 = p2_bbox
+
+        h1 = y2_1 - y1_1
+        h2 = y2_2 - y1_2
+
+        # y方向の重なりの長さを計算
+        y_overlap = max(0, min(y2_1, y2_2) - max(y1_1, y1_2))
+
+        # 重なりがそれぞれの高さの小さい方の20%以上あれば、同じ段とみなす
+        # この閾値は経験的なもので、調整の余地あり
+        is_same_row = y_overlap > (min(h1, h2) * 0.2) if min(h1, h2) > 0 else False
+
+        if is_same_row:
+            # 同じ段なら、x中心で比較（右が先）
+            cx1 = p1_data['cx']
+            cx2 = p2_data['cx']
+            if cx1 > cx2:
+                return -1  # p1が先
+            else:
+                return 1   # p2が先
+        else:
+            # 別の段なら、y中心で比較（上が先）
+            cy1 = p1_data['cy']
+            cy2 = p2_data['cy']
+            if cy1 < cy2:
+                return -1  # p1が先
+            else:
+                return 1   # p2が先
+        return 0
+
+    # パネルの中心座標データを準備
     panel_data = []
     for p in panel_objects:
         x1, y1, x2, y2 = p.bbox
         panel_data.append({'panel': p, 'cx': (x1 + x2) / 2, 'cy': (y1 + y2) / 2})
 
-    # y中心でソート
-    sorted_panels_by_y = sorted(panel_data, key=lambda p: p['cy'])
-
-    # 段（行）にグループ化
-    # 閾値は画像の高さの10%程度
-    max_h = max(p['cy'] for p in sorted_panels_by_y)
-    min_h = min(p['cy'] for p in sorted_panels_by_y)
-    row_threshold = (max_h - min_h) * 0.15 if max_h > min_h else avg_height
-
-    rows: List[List[dict]] = []
-    if sorted_panels_by_y:
-        current_row = [sorted_panels_by_y[0]]
-        for p_data in sorted_panels_by_y[1:]:
-            base_cy = current_row[0]['cy']
-            if abs(p_data['cy'] - base_cy) <= row_threshold:
-                current_row.append(p_data)
-            else:
-                rows.append(current_row)
-                current_row = [p_data]
-        rows.append(current_row)
+    # カスタム比較関数でソート
+    sorted_panel_data = sorted(panel_data, key=cmp_to_key(_compare_panels))
 
     # フラット化して最終的な読み順を設定
     result: List[Panel] = []
     reading_order = 0
-    for row in rows:
-        # 段内でx中心の降順（右から左）でソート
-        row.sort(key=lambda p: -p['cx'])
-        for p_data in row:
-            panel = p_data['panel']
-            result.append(
-                Panel(
-                    bbox=panel.bbox,
-                    text_regions=panel.text_regions,
-                    reading_order=reading_order
-                )
+    for p_data in sorted_panel_data:
+        panel = p_data['panel']
+        result.append(
+            Panel(
+                bbox=panel.bbox,
+                text_regions=panel.text_regions,
+                reading_order=reading_order
             )
-            reading_order += 1
+        )
+        reading_order += 1
             
     return result
 

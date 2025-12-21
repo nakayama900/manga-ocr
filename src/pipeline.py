@@ -60,19 +60,12 @@ def process_image(
         logger.debug(f"Processing image: {filename}")
         
         # テキスト領域を検出
-        try:
-            regions = detect_text_regions(
-                image,
-                model_path=detector_model_path,
-                device=device
-            )
-            logger.debug(f"Detected {len(regions)} text regions in {filename}")
-        except Exception as e:
-            if skip_errors:
-                logger.warning(f"Text detection failed for {filename}: {e}")
-                regions = []
-            else:
-                raise ImageProcessingError(f"Text detection failed for {filename}: {e}")
+        regions = detect_text_regions(
+            image,
+            model_path=detector_model_path,
+            device=device
+        )
+        logger.debug(f"Detected {len(regions)} text regions in {filename}")
         
         # コマを検出・グループ化
         panels: List[Panel] = []
@@ -82,83 +75,74 @@ def process_image(
                 logger.debug(f"Detected {len(panels)} panels in {filename}")
             except Exception as e:
                 if skip_errors:
-                    logger.warning(f"Panel detection failed for {filename}: {e}, falling back to all regions as one panel")
-                    # フォールバック: すべての領域を1つのコマとして扱う
-                    panels = [
-                        Panel(
-                            bbox=(0, 0, image.width, image.height),
-                            text_regions=regions,
-                            reading_order=0
-                        )
-                    ]
+                    logger.warning(f"Panel detection failed for {filename}: {e}, falling back to region-based sort.")
+                    panels = [] # パネル検出失敗として扱う
                 else:
                     raise ImageProcessingError(f"Panel detection failed for {filename}: {e}")
-        
-        # コマごとにOCRを実行
+
+        # パネル検出が有効だったかを評価する
+        use_panels = True
+        if not panels:
+            use_panels = False
+        # パネルが1つにしかグループ化されなかった場合、DBSCANが機能しなかった可能性が高い
+        elif len(panels) == 1:
+            logger.debug("Panel detection resulted in a single panel, falling back to region-based sort.")
+            use_panels = False
+        # パネルが細分化されすぎている（領域の8割以上が個別のパネルになった）場合
+        elif len(panels) > len(regions) * 0.8 and len(regions) > 2:
+            logger.debug(f"Too many panels ({len(panels)}) for {len(regions)} regions, falling back to region-based sort.")
+            use_panels = False
+
+        # OCR処理
         ocr_results: List[OCRResult] = []
-        all_regions: List[TextRegion] = []
+        final_regions: List[TextRegion] = []
         
-        if panels:
-            try:
-                # コマの読み順で処理
-                for panel in panels:
-                    # コマ内のテキスト領域を処理（既に読み順でソート済み）
-                    for region_idx, region in enumerate(panel.text_regions):
-                        try:
-                            # コマの読み順を基準に、コマ内のテキスト領域の読み順を再設定
-                            # コマの読み順 * 1000 + コマ内のインデックス で一意の読み順を生成
-                            # これにより、コマの読み順が優先され、コマ内のテキスト領域は相対的な順序を保つ
+        if use_panels:
+            # --- パネル検出成功時の処理 ---
+            logger.debug("Using panel-based reading order.")
+            for panel in panels:
+                for region_idx, region in enumerate(panel.text_regions):
+                    try:
+                        # コマの読み順を基準に、コマ内のテキスト領域の読み順を再設定
+                        adjusted_reading_order = panel.reading_order * 1000 + region_idx
+                        updated_region = TextRegion(
+                            bbox=region.bbox, image=region.image, reading_order=adjusted_reading_order
+                        )
+                        ocr_result = recognize_text(updated_region.image, region=updated_region, device=device)
+                        ocr_results.append(ocr_result)
+                        final_regions.append(updated_region)
+                    except Exception as e:
+                        if skip_errors:
+                            logger.warning(f"OCR failed for region in panel {panel.reading_order}: {e}")
                             adjusted_reading_order = panel.reading_order * 1000 + region_idx
-                            
-                            # regionのreading_orderを更新
-                            updated_region = TextRegion(
-                                bbox=region.bbox,
-                                image=region.image,
-                                reading_order=adjusted_reading_order
-                            )
-                            
-                            ocr_result = recognize_text(updated_region.image, region=updated_region, device=device)
-                            ocr_results.append(ocr_result)
-                            all_regions.append(updated_region)
-                        except Exception as e:
-                            if skip_errors:
-                                logger.warning(f"OCR failed for region in panel {panel.reading_order}: {e}")
-                                # エラー時も読み順を更新
-                                adjusted_reading_order = panel.reading_order * 1000 + region_idx
-                                error_region = TextRegion(
-                                    bbox=region.bbox,
-                                    image=region.image,
-                                    reading_order=adjusted_reading_order
-                                )
-                                ocr_results.append(OCRResult(text="", confidence=0.0, region=error_region))
-                                all_regions.append(error_region)
-                            else:
-                                raise ImageProcessingError(f"OCR failed for region in panel {panel.reading_order}: {e}")
-                
-                logger.debug(f"OCR completed for {len(ocr_results)} regions in {len(panels)} panels in {filename}")
-            except Exception as e:
-                if skip_errors:
-                    logger.warning(f"OCR failed for {filename}: {e}")
-                    # 空の結果を追加（読み順を更新）
-                    for panel in panels:
-                        for region_idx, region in enumerate(panel.text_regions):
-                            adjusted_reading_order = panel.reading_order * 1000 + region_idx
-                            error_region = TextRegion(
-                                bbox=region.bbox,
-                                image=region.image,
-                                reading_order=adjusted_reading_order
-                            )
+                            error_region = TextRegion(bbox=region.bbox, image=region.image, reading_order=adjusted_reading_order)
                             ocr_results.append(OCRResult(text="", confidence=0.0, region=error_region))
-                            all_regions.append(error_region)
-                else:
-                    raise ImageProcessingError(f"OCR failed for {filename}: {e}")
-        
+                            final_regions.append(error_region)
+                        else:
+                            raise ImageProcessingError(f"OCR failed for region in panel {panel.reading_order}: {e}")
+        else:
+            # --- パネル検出失敗時のフォールバック処理 ---
+            logger.debug("Using simple region-based reading order (fallback).")
+            # detect_text_regions が返したソート順をそのまま使う
+            for region in regions:
+                 try:
+                    ocr_result = recognize_text(region.image, region=region, device=device)
+                    ocr_results.append(ocr_result)
+                    final_regions.append(region)
+                 except Exception as e:
+                    if skip_errors:
+                        logger.warning(f"OCR failed for region {region.reading_order}: {e}")
+                        ocr_results.append(OCRResult(text="", confidence=0.0, region=region))
+                        final_regions.append(region)
+                    else:
+                        raise ImageProcessingError(f"OCR failed for region {region.reading_order}: {e}")
+
         processing_time = time.time() - start_time
         
         return PageResult(
             filename=filename,
             page_number=page_number,
-            regions=all_regions,  # コマごとに処理された領域（読み順でソート済み）
+            regions=final_regions,
             ocr_results=ocr_results,
             processing_time=processing_time
         )
