@@ -24,68 +24,46 @@ Apple Silicon (M1/M2/M3/M4) のMPS (Metal Performance Shaders) を活用し、�
 
 ## インストール
 
-### 方法1: 自動セットアップスクリプト（推奨）
+このツールは、PyPIで公開されている `manga-ocr` パッケージと、テキスト検出用の `comic-text-detector` を組み合わせたラッパーツールです。
+以下の手順でセットアップを行ってください。
 
-最も簡単な方法です。以下のコマンドで全てのセットアップが完了します：
+### 1. リポジトリのクローン
 
-```bash
-# リポジトリのクローン（submoduleも含む）
-git clone --recursive https://github.com/kazuki-ookura/manga-ocr.git
-cd manga-ocr
-
-# セットアップスクリプトを実行
-./setup.sh
-```
-
-セットアップスクリプトは以下を自動で実行します：
-- `comic-text-detector`のセットアップ（git submodule）
-- モデルファイルのダウンロード
-- 仮想環境の作成（オプション）
-- 依存関係のインストール
-
-### 方法2: 手動セットアップ
-
-#### 1. リポジトリのクローン
+まず、このリポジトリと、submoduleとして含まれている `comic-text-detector` を一緒にクローンします。
 
 ```bash
 # submoduleも含めてクローン（推奨）
 git clone --recursive https://github.com/kazuki-ookura/manga-ocr.git
 cd manga-ocr
 
-# または、既にクローン済みの場合
-git submodule update --init --recursive
+# もし --recursive をつけずにクローンしてしまった場合
+# git submodule update --init --recursive
 ```
 
-#### 2. comic-text-detectorのセットアップ
+### 2. モデルファイルの配置
 
-`comic-text-detector`はgit submoduleとして管理されています：
+次に、テキスト検出モデルをダウンロードし、正しい位置に配置します。
+
+以下のリンクからモデルファイル（`comictextdetector.pt`）をダウンロードしてください。
+
+- [manga-image-translator 最新リリースページ](https://github.com/zyddnys/manga-image-translator/releases/latest)
+- [Google Drive](https://drive.google.com/drive/folders/1cTsXP5NYTCjhPVxwScdhxqJleHuIOyXG?usp=sharing)
+
+ダウンロードしたファイルを `vendor/comic-text-detector/data/` ディレクトリに配置します。
 
 ```bash
-# submoduleを初期化（既に--recursiveでクローンした場合は不要）
-git submodule update --init --recursive
+# dataディレクトリが存在しない場合は作成
+mkdir -p vendor/comic-text-detector/data
+
+# ダウンロードしたファイルを配置（例: ダウンロードフォルダからの移動）
+mv ~/Downloads/comictextdetector.pt vendor/comic-text-detector/data/
 ```
 
-<details>
-<summary>既存のvendor/comic-text-detectorがある場合（v0.1以前からアップデートする場合）</summary>
+**重要**: このモデルファイル（約76MB）はテキスト検出に必須です。配置しないとテキスト領域の検出が行われません。
 
-既に手動で`vendor/comic-text-detector`をクローンしている場合は、以下の手順でsubmoduleに変換できます：
+### 3. 仮想環境の作成と依存関係のインストール
 
-```bash
-# 既存のvendor/comic-text-detectorを削除（バックアップ推奨）
-rm -rf vendor/comic-text-detector
-
-# git submoduleとして追加
-git submodule add https://github.com/dmMaze/comic-text-detector.git vendor/comic-text-detector
-
-# submoduleを初期化
-git submodule update --init --recursive
-```
-
-</details>
-
-**重要**: `comic-text-detector`は必須です。セットアップしないとテキスト検出機能が動作しません。
-
-#### 3. 仮想環境の作成と依存関係のインストール
+Pythonの仮想環境を作成し、必要なパッケージをインストールします。
 
 ```bash
 # 仮想環境を作成（推奨）
@@ -94,45 +72,16 @@ source venv/bin/activate
 
 # 依存関係をインストール
 pip install -r requirements.txt
-
-# プロジェクトをインストール（エントリーポイントを有効化）
-pip install -e .
 ```
 
-#### 4. モデルファイルの配置
+**注意**: このプロジェクトは `pip install -e .` でのインストールを想定していません。必ず `pip install -r requirements.txt` を使用してください。
 
-`comic-text-detector` を使用するには、事前にトレーニングされたモデルファイルが必要です。
-
-**setup.shが利用できない場合**（Windowsなど）は、以下のリンクからモデルファイルをダウンロードし、`vendor/comic-text-detector/data/comictextdetector.pt` に配置してください：
-
-- [manga-image-translator 最新リリースページ](https://github.com/zyddnys/manga-image-translator/releases/latest)
-- [manga-image-translator beta-0.3 リリースページ](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
-- [Google Drive](https://drive.google.com/drive/folders/1cTsXP5NYTCjhPVxwScdhxqJleHuIOyXG?usp=sharing)
-
-```bash
-# dataディレクトリが存在しない場合は作成
-mkdir -p vendor/comic-text-detector/data
-
-# ダウンロードしたファイルを配置（パスを適宜変更してください）
-mv ~/Downloads/comictextdetector.pt vendor/comic-text-detector/data/
-```
-
-**重要**: モデルファイル（約76MB）は必須です。配置されていない場合、テキスト検出機能は動作しません。
 
 ## 使用方法
 
-### エントリーポイントを使用（推奨）
+### 基本的な実行方法
 
-`pip install -e .`でインストールした場合、以下のコマンドで実行できます：
-
-```bash
-# 基本的な使用
-manga-ocr comic.zip
-```
-
-### モジュールとして実行
-
-エントリーポイントが設定されていない場合：
+セットアップ完了後、以下のコマンドでツールを実行します。`python3 -m src.cli` の後に、処理したいZipファイルのパスを指定してください。
 
 ```bash
 # 基本的な使用
@@ -143,23 +92,23 @@ python3 -m src.cli comic.zip
 
 - **JSON形式のみ出力:**
   ```bash
-  manga-ocr comic.zip --output-format json
+  python3 -m src.cli comic.zip --output-format json
   ```
 - **出力ディレクトリを指定:**
   ```bash
-  manga-ocr comic.zip -o ./results
+  python3 -m src.cli comic.zip -o ./results
   ```
 - **詳細ログ付きで実行:**
   ```bash
-  manga-ocr comic.zip --verbose
+  python3 -m src.cli comic.zip --verbose
   ```
 - **CPUを強制使用:**
   ```bash
-  manga-ocr comic.zip --device cpu
+  python3 -m src.cli comic.zip --device cpu
   ```
 - **エラー時に処理を中断:**
   ```bash
-  manga-ocr comic.zip --no-skip-errors
+  python3 -m src.cli comic.zip --no-skip-errors
   ```
 
 ### 出力ファイル
@@ -172,7 +121,7 @@ python3 -m src.cli comic.zip
 
 ```bash
 # 実際の使用例
-manga-ocr '漫画タイトル.zip' --verbose
+python3 -m src.cli '漫画タイトル.zip' --verbose
 
 # 出力例:
 # 画像ファイルを 218 個見つけました
@@ -232,7 +181,7 @@ zip -j demo.zip demo_images_png/page1.png demo_images_png/page2.png demo_images_
 次に、生成された `demo.zip` に対して、以下のコマンドを実行します。
 
 ```bash
-manga-ocr demo.zip
+python3 -m src.cli demo.zip
 ```
 
 ### 3. 出力結果

@@ -4,7 +4,6 @@ torchvision>=0.15.0
 numpy<2.0.0  # comic-text-detector compatibility
 
 # OCR and Text Detection
-manga-ocr>=0.1.0
 # comic-text-detector: GitHubリポジトリからインストールが必要
 # 例: pip install git+https://github.com/<owner>/comic-text-detector.git
 
