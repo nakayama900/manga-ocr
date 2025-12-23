@@ -65,11 +65,20 @@ def setup_submodule() -> bool:
         # 既存のディレクトリがあれば削除（安全性チェック付き）
         if vendor_dir.exists():
             # vendor/comic-text-detector パスが想定通りか確認
-            if str(vendor_dir).endswith("vendor/comic-text-detector"):
-                shutil.rmtree(vendor_dir)
-            else:
-                print(f"  ✗ 安全性チェック失敗: 予期しないパス {vendor_dir}", file=sys.stderr)
-                return False
+            try:
+                expected_base = Path.cwd() / "vendor"
+                if vendor_dir.resolve().is_relative_to(expected_base):
+                    shutil.rmtree(vendor_dir)
+                else:
+                    print(f"  ✗ 安全性チェック失敗: パスがvendorディレクトリ外です {vendor_dir}", file=sys.stderr)
+                    return False
+            except (ValueError, AttributeError):
+                # Python < 3.9 では is_relative_to が使えないので、フォールバック
+                if str(vendor_dir.resolve()).startswith(str(expected_base.resolve())):
+                    shutil.rmtree(vendor_dir)
+                else:
+                    print(f"  ✗ 安全性チェック失敗: パスがvendorディレクトリ外です {vendor_dir}", file=sys.stderr)
+                    return False
         
         subprocess.run(
             ["git", "clone", "--depth", "1", repo_url, str(vendor_dir)],
