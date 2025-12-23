@@ -48,12 +48,13 @@ def setup_submodule() -> bool:
             if vendor_dir.exists() and (vendor_dir / ".git").exists():
                 print("  ✓ comic-text-detector のセットアップが完了しました")
                 return True
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             # submodule が失敗した場合は直接クローンにフォールバック
-            pass
+            print("  git submodule が失敗したため、直接クローンにフォールバックします...")
         except FileNotFoundError:
             # git コマンドが見つからない場合も直接クローンにフォールバック
-            pass
+            print("  git コマンドが見つからないため、直接クローンにフォールバックします...")
+
     
     # git submodule が使えない場合は直接クローン
     print("  comic-text-detector を直接クローンしています...")
@@ -61,9 +62,14 @@ def setup_submodule() -> bool:
         # vendor ディレクトリを作成
         vendor_dir.parent.mkdir(parents=True, exist_ok=True)
         
-        # 既存のディレクトリがあれば削除
+        # 既存のディレクトリがあれば削除（安全性チェック付き）
         if vendor_dir.exists():
-            shutil.rmtree(vendor_dir)
+            # vendor/comic-text-detector パスが想定通りか確認
+            if str(vendor_dir).endswith("vendor/comic-text-detector"):
+                shutil.rmtree(vendor_dir)
+            else:
+                print(f"  ✗ 安全性チェック失敗: 予期しないパス {vendor_dir}", file=sys.stderr)
+                return False
         
         subprocess.run(
             ["git", "clone", "--depth", "1", repo_url, str(vendor_dir)],
@@ -113,8 +119,8 @@ def download_model() -> bool:
     model_dir.mkdir(parents=True, exist_ok=True)
     
     try:
-        # urllib を使用してダウンロード
-        with urllib.request.urlopen(model_url) as response:
+        # urllib を使用してダウンロード（タイムアウト: 300秒）
+        with urllib.request.urlopen(model_url, timeout=300) as response:
             with open(model_file, 'wb') as out_file:
                 shutil.copyfileobj(response, out_file)
         
