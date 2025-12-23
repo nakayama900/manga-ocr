@@ -7,6 +7,7 @@
 2. モデルファイルのダウンロード
 """
 
+import os
 import sys
 import subprocess
 from pathlib import Path
@@ -111,7 +112,6 @@ def main() -> int:
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
     
-    import os
     os.chdir(project_root)
     
     success = True
