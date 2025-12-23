@@ -19,40 +19,74 @@ def setup_submodule() -> bool:
     """
     comic-text-detector のサブモジュールをセットアップ
     
+    git submodule が使えない場合（UV tool install 等）は直接クローンする
+    
     Returns:
         成功した場合 True、失敗した場合 False
     """
     print("1. comic-text-detector のセットアップ...")
     
     vendor_dir = Path("vendor/comic-text-detector")
+    repo_url = "https://github.com/dmMaze/comic-text-detector.git"
     
+    # 既にセットアップ済みかチェック
     if vendor_dir.exists() and (vendor_dir / ".git").exists():
         print("  ✓ comic-text-detector は既にセットアップされています")
         return True
     
-    print("  git submodule を初期化しています...")
+    # まず git submodule を試す（開発環境用）
+    if Path(".git").exists() and Path(".gitmodules").exists():
+        print("  git submodule を初期化しています...")
+        try:
+            subprocess.run(
+                ["git", "submodule", "update", "--init", "--recursive"],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            
+            if vendor_dir.exists() and (vendor_dir / ".git").exists():
+                print("  ✓ comic-text-detector のセットアップが完了しました")
+                return True
+        except subprocess.CalledProcessError:
+            # submodule が失敗した場合は直接クローンにフォールバック
+            pass
+        except FileNotFoundError:
+            # git コマンドが見つからない場合も直接クローンにフォールバック
+            pass
+    
+    # git submodule が使えない場合は直接クローン
+    print("  comic-text-detector を直接クローンしています...")
     try:
+        # vendor ディレクトリを作成
+        vendor_dir.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 既存のディレクトリがあれば削除
+        if vendor_dir.exists():
+            shutil.rmtree(vendor_dir)
+        
         subprocess.run(
-            ["git", "submodule", "update", "--init", "--recursive"],
+            ["git", "clone", "--depth", "1", repo_url, str(vendor_dir)],
             check=True,
             capture_output=True,
             text=True
         )
         
-        if vendor_dir.exists():
+        if vendor_dir.exists() and (vendor_dir / ".git").exists():
             print("  ✓ comic-text-detector のセットアップが完了しました")
             return True
         else:
             print("  ✗ comic-text-detector のセットアップに失敗しました", file=sys.stderr)
-            print("  手動で以下を実行してください:", file=sys.stderr)
-            print("    git submodule add https://github.com/dmMaze/comic-text-detector.git vendor/comic-text-detector", file=sys.stderr)
+            print(f"  手動でクローンしてください: git clone {repo_url} vendor/comic-text-detector", file=sys.stderr)
             return False
             
     except subprocess.CalledProcessError as e:
-        print(f"  ✗ git submodule の初期化に失敗: {e}", file=sys.stderr)
+        print(f"  ✗ git clone に失敗: {e}", file=sys.stderr)
+        print(f"  手動でクローンしてください: git clone {repo_url} vendor/comic-text-detector", file=sys.stderr)
         return False
     except FileNotFoundError:
         print("  ✗ git コマンドが見つかりません", file=sys.stderr)
+        print(f"  手動でクローンしてください: git clone {repo_url} vendor/comic-text-detector", file=sys.stderr)
         return False
 
 
