@@ -8,14 +8,13 @@ version = "0.1.0"
 description = "Zipファイルで圧縮された漫画画像を一括でOCR処理するCLIツール"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license.text = "MIT"
 authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -25,14 +24,23 @@ classifiers = [
 dependencies = [
     "torch>=2.0.0",
     "torchvision>=0.15.0",
+    "numpy<2.0.0",
     "Pillow>=10.0.0",
+    "opencv-python>=4.1.2",
     "natsort>=8.4.0",
+    "wandb>=0.10.0",
+    "torchsummary>=1.5.0",
+    "pyclipper>=1.2.0",
+    "shapely>=2.0.0",
     "click>=8.1.0",
     "tqdm>=4.66.0",
+    "scikit-learn>=1.0.0",
+    "manga-ocr",
 ]
 
 [project.scripts]
 manga-ocr = "src.cli:main"
+manga-ocr-setup = "src.setup_helper:main"
 
 [project.optional-dependencies]
 dev = [
